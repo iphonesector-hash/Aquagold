@@ -1,0 +1,15 @@
+{
+  "name": "Aqua Gold",
+  "short_name": "Aqua Gold",
+  "description": "سیستم مدیریت خدمات تصفیه آب",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A1628",
+  "theme_color": "#1AA89A",
+  "orientation": "portrait-primary",
+  "lang": "fa",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aqua Gold</title>
+<meta name="theme-color" content="#1AA89A">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
+<style>body{font-family:Vazirmatn,system-ui,sans-serif;margin:0}</style>
+</head>
+<body class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()" x-cloak>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>[x-cloak]{display:none!important}</style>
+
+<template x-if="!token">
+  <div class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-teal-500 to-teal-700">
+    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
+      <div class="text-center mb-6">
+        <div class="inline-flex w-16 h-16 rounded-2xl bg-teal-500 items-center justify-center mb-3">
+          <span class="text-3xl">💎</span>
+        </div>
+        <h1 class="text-2xl font-bold">Aqua Gold</h1>
+        <p class="text-sm text-slate-500 mt-1">سیستم مدیریت خدمات تصفیه آب</p>
+      </div>
+      <form @submit.prevent="login()" class="space-y-4">
+        <input x-model="form.username" type="text" placeholder="نام کاربری" required
+          class="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:border-teal-500">
+        <input x-model="form.password" type="password" placeholder="رمز عبور" required
+          class="w-full border border-slate-300 rounded-xl px-4 py-3 focus:outline-none focus:border-teal-500">
+        <div x-show="error" class="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm" x-text="error"></div>
+        <button type="submit" :disabled="loading"
+          class="w-full bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 rounded-xl disabled:opacity-50">
+          <span x-show="!loading">ورود به سیستم</span>
+          <span x-show="loading">در حال ورود...</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</template>
+
+<template x-if="token">
+  <div class="min-h-screen">
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">💎</span>
+        <h1 class="text-xl font-bold">Aqua Gold</h1>
+      </div>
+      <nav class="hidden md:flex gap-4 text-sm">
+        <button @click="page='dashboard'" :class="page==='dashboard'?'text-teal-600 font-bold':'text-slate-600'">داشبورد</button>
+        <button @click="page='jobs';loadJobs()" :class="page==='jobs'?'text-teal-600 font-bold':'text-slate-600'">سرویس‌ها</button>
+        <button @click="page='customers';loadCustomers()" :class="page==='customers'?'text-teal-600 font-bold':'text-slate-600'">مشتریان</button>
+        <button @click="page='inventory';loadInventory()" :class="page==='inventory'?'text-teal-600 font-bold':'text-slate-600'">انبار</button>
+      </nav>
+      <div class="flex items-center gap-3">
+        <span class="text-sm text-slate-600 hidden sm:inline" x-text="user?.first_name+' '+user?.last_name"></span>
+        <button @click="logout()" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-xl text-sm">خروج</button>
+      </div>
+    </header>
+
+    <main class="p-6 max-w-6xl mx-auto">
+      <!-- Dashboard -->
+      <template x-if="page==='dashboard'">
+        <div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-2xl p-5 border border-slate-200">
+              <p class="text-xs text-slate-500">درآمد امروز</p>
+              <p class="text-2xl font-bold mt-2" x-text="fmt(stats?.today?.total||0)"></p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-slate-200">
+              <p class="text-xs text-slate-500">سرویس‌های امروز</p>
+              <p class="text-2xl font-bold mt-2" x-text="stats?.today?.count||0"></p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-slate-200">
+              <p class="text-xs text-slate-500">مشتریان</p>
+              <p class="text-2xl font-bold mt-2" x-text="stats?.total_customers||0"></p>
+            </div>
+            <div class="bg-white rounded-2xl p-5 border border-slate-200">
+              <p class="text-xs text-slate-500">هشدار انبار</p>
+              <p class="text-2xl font-bold mt-2" x-text="(stats?.low_stock||0)+(stats?.out_of_stock||0)"></p>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl p-6 border border-slate-200">
+            <h2 class="font-bold text-lg mb-4">آخرین سرویس‌ها</h2>
+            <div class="space-y-2">
+              <template x-for="j in recentJobs" :key="j.id">
+                <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <div>
+                    <p class="font-medium" x-text="j.name"></p>
+                    <p class="text-xs text-slate-500" x-text="j.date"></p>
+                  </div>
+                  <span class="text-sm font-bold" x-text="fmt(j.amount)+' تومان'"></span>
+                </div>
+              </template>
+              <template x-if="recentJobs.length===0">
+                <p class="text-center text-slate-500 py-4">سرویسی ثبت نشده است</p>
+              </template>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Jobs -->
+      <template x-if="page==='jobs'">
+        <div>
+          <div class="flex justify-between mb-4">
+            <h2 class="text-xl font-bold">سرویس‌ها</h2>
+            <button @click="openJobForm()" class="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-xl text-sm">+ سرویس جدید</button>
+          </div>
+          <div x-show="showJobForm" class="bg-white rounded-2xl p-6 border border-slate-200 mb-4">
+            <form @submit.prevent="saveJob()" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input x-model="jobForm.name" placeholder="نام مشتری *" required class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="jobForm.phone" placeholder="تلفن" class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="jobForm.address" placeholder="آدرس" class="border border-slate-300 rounded-xl px-3 py-2 md:col-span-2">
+              <input x-model="jobForm.date" type="date" class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="jobForm.amount" type="number" placeholder="مبلغ" class="border border-slate-300 rounded-xl px-3 py-2">
+              <div class="md:col-span-2 flex gap-2">
+                <button type="submit" class="flex-1 bg-teal-500 hover:bg-teal-600 text-white py-2 rounded-xl">ذخیره</button>
+                <button type="button" @click="showJobForm=false" class="px-4 bg-slate-200 rounded-xl">انصراف</button>
+              </div>
+            </form>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-500">
+                <tr><th class="text-right p-3">مشتری</th><th class="text-right p-3">تلفن</th><th class="text-right p-3">تاریخ</th><th class="text-right p-3">مبلغ</th><th class="p-3"></th></tr>
+              </thead>
+              <tbody>
+                <template x-for="j in jobs" :key="j.id">
+                  <tr class="border-t border-slate-100">
+                    <td class="p-3" x-text="j.name"></td>
+                    <td class="p-3 text-slate-500" x-text="j.phone"></td>
+                    <td class="p-3 text-slate-500" x-text="j.date"></td>
+                    <td class="p-3 font-bold" x-text="fmt(j.amount)"></td>
+                    <td class="p-3 text-center">
+                      <button @click="deleteJob(j.id)" class="text-red-500 hover:text-red-600">🗑</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
+      <!-- Customers -->
+      <template x-if="page==='customers'">
+        <div>
+          <div class="flex justify-between mb-4">
+            <h2 class="text-xl font-bold">مشتریان</h2>
+            <button @click="openCustomerForm()" class="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-xl text-sm">+ مشتری جدید</button>
+          </div>
+          <div x-show="showCustomerForm" class="bg-white rounded-2xl p-6 border border-slate-200 mb-4">
+            <form @submit.prevent="saveCustomer()" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input x-model="customerForm.name" placeholder="نام *" required class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="customerForm.phone" placeholder="تلفن" class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="customerForm.address" placeholder="آدرس" class="border border-slate-300 rounded-xl px-3 py-2 md:col-span-2">
+              <div class="md:col-span-2 flex gap-2">
+                <button type="submit" class="flex-1 bg-teal-500 hover:bg-teal-600 text-white py-2 rounded-xl">ذخیره</button>
+                <button type="button" @click="showCustomerForm=false" class="px-4 bg-slate-200 rounded-xl">انصراف</button>
+              </div>
+            </form>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-500">
+                <tr><th class="text-right p-3">نام</th><th class="text-right p-3">تلفن</th><th class="text-right p-3">آدرس</th><th class="p-3"></th></tr>
+              </thead>
+              <tbody>
+                <template x-for="c in customers" :key="c.id">
+                  <tr class="border-t border-slate-100">
+                    <td class="p-3 font-medium" x-text="c.name"></td>
+                    <td class="p-3 text-slate-500" x-text="c.phone"></td>
+                    <td class="p-3 text-slate-500" x-text="c.address"></td>
+                    <td class="p-3 text-center">
+                      <button @click="deleteCustomer(c.id)" class="text-red-500">🗑</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+
+      <!-- Inventory -->
+      <template x-if="page==='inventory'">
+        <div>
+          <div class="flex justify-between mb-4">
+            <h2 class="text-xl font-bold">انبار</h2>
+            <button @click="openInventoryForm()" class="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-xl text-sm">+ قطعه جدید</button>
+          </div>
+          <div x-show="showInventoryForm" class="bg-white rounded-2xl p-6 border border-slate-200 mb-4">
+            <form @submit.prevent="saveInventory()" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <input x-model="inventoryForm.name" placeholder="نام قطعه *" required class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="inventoryForm.category" placeholder="دسته" class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="inventoryForm.quantity" type="number" placeholder="موجودی" class="border border-slate-300 rounded-xl px-3 py-2">
+              <input x-model="inventoryForm.min_quantity" type="number" placeholder="حداقل" class="border border-slate-300 rounded-xl px-3 py-2">
+              <div class="md:col-span-2 flex gap-2">
+                <button type="submit" class="flex-1 bg-teal-500 hover:bg-teal-600 text-white py-2 rounded-xl">ذخیره</button>
+                <button type="button" @click="showInventoryForm=false" class="px-4 bg-slate-200 rounded-xl">انصراف</button>
+              </div>
+            </form>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-xs text-slate-500">
+                <tr><th class="text-right p-3">نام</th><th class="text-right p-3">دسته</th><th class="text-right p-3">موجودی</th><th class="p-3"></th></tr>
+              </thead>
+              <tbody>
+                <template x-for="i in inventory" :key="i.id">
+                  <tr class="border-t border-slate-100">
+                    <td class="p-3 font-medium" x-text="i.name"></td>
+                    <td class="p-3 text-slate-500" x-text="i.category"></td>
+                    <td class="p-3">
+                      <span class="px-2 py-1 rounded-lg text-xs font-bold"
+                        :class="i.quantity<=i.min_quantity?'bg-red-100 text-red-700':'bg-green-100 text-green-700'"
+                        x-text="i.quantity+' '+i.unit"></span>
+                    </td>
+                    <td class="p-3 text-center">
+                      <button @click="deleteInventory(i.id)" class="text-red-500">🗑</button>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </template>
+    </main>
+  </div>
+</template>
+
+<div x-show="toast.show" x-transition class="fixed bottom-6 left-6 z-50 bg-slate-800 text-white px-5 py-3 rounded-xl shadow-2xl">
+  <span x-text="toast.msg"></span>
+</div>
+
+<script>
+function app() {
+  return {
+    token: localStorage.getItem('token'),
+    user: JSON.parse(localStorage.getItem('user')||'null'),
+    stats: null, recentJobs: [], jobs: [], customers: [], inventory: [],
+    form: {username:'',password:''}, error: '', loading: false,
+    page: 'dashboard',
+    showJobForm: false, jobForm: {},
+    showCustomerForm: false, customerForm: {},
+    showInventoryForm: false, inventoryForm: {},
+    toast: {show:false,msg:''},
+    init() {
+      if (this.token) this.loadDashboard();
+      const h = location.hash.slice(1);
+      if (h && ['dashboard','jobs','customers','inventory'].includes(h)) this.page = h;
+    },
+    async api(path, opts={}) {
+      const headers = {'Content-Type':'application/json'};
+      if (this.token) headers['Authorization'] = 'Bearer '+this.token;
+      const res = await fetch('/api'+path, {...opts, headers});
+      if (res.status===401) { this.logout(); throw new Error('session'); }
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) throw new Error(data.msg||data.error||'error');
+      return data;
+    },
+    async login() {
+      this.loading=true; this.error='';
+      try {
+        const data = await this.api('/login',{method:'POST',body:JSON.stringify(this.form)});
+        this.token=data.token; this.user=data.user;
+        localStorage.setItem('token',data.token);
+        localStorage.setItem('user',JSON.stringify(data.user));
+        this.loadDashboard();
+      } catch(e) { this.error='نام کاربری یا رمز اشتباه است'; }
+      finally { this.loading=false; }
+    },
+    logout() {
+      this.api('/logout',{method:'POST'}).catch(()=>{});
+      localStorage.clear(); location.reload();
+    },
+    async loadDashboard() {
+      try {
+        const [stats, jobs] = await Promise.all([this.api('/stats'), this.api('/jobs')]);
+        this.stats=stats; this.recentJobs=jobs.slice(0,8);
+      } catch(e) { console.error(e); }
+    },
+    async loadJobs() { try { this.jobs = await this.api('/jobs'); } catch(e){} },
+    async loadCustomers() { try { this.customers = await this.api('/customers'); } catch(e){} },
+    async loadInventory() { try { this.inventory = await this.api('/inventory'); } catch(e){} },
+    openJobForm() { this.jobForm={name:'',phone:'',address:'',date:'',amount:0}; this.showJobForm=true; },
+    async saveJob() {
+      try {
+        await this.api('/jobs',{method:'POST',body:JSON.stringify(this.jobForm)});
+        this.showJobForm=false; this.toastMsg('ذخیره شد'); this.loadJobs(); this.loadDashboard();
+      } catch(e) { this.toastMsg(e.message); }
+    },
+    async deleteJob(id) {
+      if (!confirm('حذف شود؟')) return;
+      try { await this.api('/jobs/'+id,{method:'DELETE'}); this.toastMsg('حذف شد'); this.loadJobs(); }
+      catch(e) { this.toastMsg(e.message); }
+    },
+    openCustomerForm() { this.customerForm={name:'',phone:'',address:''}; this.showCustomerForm=true; },
+    async saveCustomer() {
+      try {
+        await this.api('/customers',{method:'POST',body:JSON.stringify(this.customerForm)});
+        this.showCustomerForm=false; this.toastMsg('ذخیره شد'); this.loadCustomers();
+      } catch(e) { this.toastMsg(e.message); }
+    },
+    async deleteCustomer(id) {
+      if (!confirm('حذف شود؟')) return;
+      try { await this.api('/customers/'+id,{method:'DELETE'}); this.toastMsg('حذف شد'); this.loadCustomers(); }
+      catch(e) { this.toastMsg(e.message); }
+    },
+    openInventoryForm() { this.inventoryForm={name:'',category:'',quantity:0,min_quantity:5}; this.showInventoryForm=true; },
+    async saveInventory() {
+      try {
+        await this.api('/inventory',{method:'POST',body:JSON.stringify(this.inventoryForm)});
+        this.showInventoryForm=false; this.toastMsg('ذخیره شد'); this.loadInventory();
+      } catch(e) { this.toastMsg(e.message); }
+    },
+    async deleteInventory(id) {
+      if (!confirm('حذف شود؟')) return;
+      try { await this.api('/inventory/'+id,{method:'DELETE'}); this.toastMsg('حذف شد'); this.loadInventory(); }
+      catch(e) { this.toastMsg(e.message); }
+    },
+    toastMsg(msg) {
+      this.toast={show:true,msg};
+      setTimeout(()=>this.toast.show=false, 3000);
+    },
+    fmt(n) { return new Intl.NumberFormat('fa-IR').format(Math.round(n||0)); }
+  }
+}
+</script>
+</body>
+</html>
