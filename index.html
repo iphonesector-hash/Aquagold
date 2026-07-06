@@ -64,53 +64,176 @@ body{font-family:Vazirmatn,system-ui,sans-serif;margin:0}
   </div>
 </header>
 
+<!-- NAVIGATION -->
+<nav class="bg-white border-b px-6 py-3 flex gap-4 overflow-x-auto">
+  <button @click="page='dashboard'" 
+          :class="page==='dashboard' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
+          class="pb-2 font-medium whitespace-nowrap">داشبورد</button>
+  <button @click="page='jobs'; loadJobs()" 
+          :class="page==='jobs' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
+          class="pb-2 font-medium whitespace-nowrap">سرویس‌ها</button>
+  <button @click="page='customers'; loadCustomers()" 
+          :class="page==='customers' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
+          class="pb-2 font-medium whitespace-nowrap">مشتریان</button>
+  <button @click="page='inventory'; loadInventory()" 
+          :class="page==='inventory' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
+          class="pb-2 font-medium whitespace-nowrap">انبار</button>
+</nav>
+
 <main class="p-6">
 
   <!-- DASHBOARD -->
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+  <div x-show="page==='dashboard'">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-    <div class="bg-white p-4 rounded-xl">
-      <div class="text-xs text-gray-500">درآمد امروز</div>
-      <div class="text-xl font-bold" x-text="fmt(stats?.today?.total)"></div>
+      <div class="bg-white p-4 rounded-xl">
+        <div class="text-xs text-gray-500">درآمد امروز</div>
+        <div class="text-xl font-bold" x-text="fmt(stats?.today?.total)"></div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl">
+        <div class="text-xs text-gray-500">سرویس امروز</div>
+        <div class="text-xl font-bold" x-text="stats?.today?.count ?? 0"></div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl">
+        <div class="text-xs text-gray-500">مشتریان</div>
+        <div class="text-xl font-bold" x-text="stats?.total_customers ?? 0"></div>
+      </div>
+
+      <div class="bg-white p-4 rounded-xl">
+        <div class="text-xs text-gray-500">انبار</div>
+        <div class="text-xl font-bold" x-text="safeStock()"></div>
+      </div>
+
     </div>
 
-    <div class="bg-white p-4 rounded-xl">
-      <div class="text-xs text-gray-500">سرویس امروز</div>
-      <div class="text-xl font-bold" x-text="stats?.today?.count ?? 0"></div>
-    </div>
+    <!-- RECENT -->
+    <div class="bg-white mt-6 p-4 rounded-xl">
+      <h2 class="font-bold mb-3">آخرین سرویس‌ها</h2>
 
-    <div class="bg-white p-4 rounded-xl">
-      <div class="text-xs text-gray-500">مشتریان</div>
-      <div class="text-xl font-bold" x-text="stats?.total_customers ?? 0"></div>
-    </div>
+      <template x-if="recentJobs.length">
+        <template x-for="j in recentJobs" :key="j.id">
+          <div class="flex justify-between border-b py-2">
+            <div>
+              <div x-text="j.name"></div>
+              <div class="text-xs text-gray-400" x-text="j.date"></div>
+            </div>
+            <div x-text="fmt(j.amount)"></div>
+          </div>
+        </template>
+      </template>
 
-    <div class="bg-white p-4 rounded-xl">
-      <div class="text-xs text-gray-500">انبار</div>
-      <div class="text-xl font-bold" x-text="safeStock()"></div>
+      <template x-if="!recentJobs.length">
+        <div class="text-center text-gray-400 py-4">سرویسی ثبت نشده</div>
+      </template>
     </div>
-
   </div>
 
-  <!-- RECENT -->
-  <div class="bg-white mt-6 p-4 rounded-xl">
-    <h2 class="font-bold mb-3">آخرین سرویس‌ها</h2>
-
-    <template x-if="recentJobs.length">
-      <template x-for="j in recentJobs" :key="j.id">
-        <div class="flex justify-between border-b py-2">
-          <div>
-            <div x-text="j.name"></div>
-            <div class="text-xs text-gray-400" x-text="j.date"></div>
-          </div>
-          <div x-text="fmt(j.amount)"></div>
+  <!-- JOBS PAGE -->
+  <div x-show="page==='jobs'">
+    <div class="bg-white p-4 rounded-xl">
+      <h2 class="font-bold mb-3">همه سرویس‌ها</h2>
+      
+      <div x-show="loadingJobs" class="text-center py-4 text-gray-500">در حال بارگذاری...</div>
+      
+      <template x-if="!loadingJobs && jobs.length">
+        <div class="space-y-2">
+          <template x-for="j in jobs" :key="j.id">
+            <div class="flex justify-between border-b py-3">
+              <div>
+                <div class="font-medium" x-text="j.name || 'بدون نام'"></div>
+                <div class="text-xs text-gray-500" x-text="j.phone"></div>
+                <div class="text-xs text-gray-400" x-text="j.date"></div>
+                <div class="text-xs text-gray-400" x-text="j.address"></div>
+              </div>
+              <div class="text-left">
+                <div class="font-bold" x-text="fmt(j.amount)"></div>
+                <div class="text-xs px-2 py-1 rounded mt-1" 
+                     :class="{
+                       'bg-green-100 text-green-700': j.status === 'completed',
+                       'bg-yellow-100 text-yellow-700': j.status === 'pending' || j.status === 'scheduled',
+                       'bg-blue-100 text-blue-700': j.status === 'in_progress',
+                       'bg-gray-100 text-gray-700': j.status === 'registered'
+                     }"
+                     x-text="statusLabel(j.status)"></div>
+              </div>
+            </div>
+          </template>
         </div>
       </template>
-    </template>
 
-    <template x-if="!recentJobs.length">
-      <div class="text-center text-gray-400 py-4">سرویسی ثبت نشده</div>
-    </template>
+      <template x-if="!loadingJobs && !jobs.length && !jobsError">
+        <div class="text-center text-gray-400 py-8">هیچ سرویسی ثبت نشده است</div>
+      </template>
 
+      <div x-show="jobsError" class="text-red-500 text-center py-4" x-text="jobsError"></div>
+    </div>
+  </div>
+
+  <!-- CUSTOMERS PAGE -->
+  <div x-show="page==='customers'">
+    <div class="bg-white p-4 rounded-xl">
+      <h2 class="font-bold mb-3">مشتریان</h2>
+      
+      <div x-show="loadingCustomers" class="text-center py-4 text-gray-500">در حال بارگذاری...</div>
+      
+      <template x-if="!loadingCustomers && customers.length">
+        <div class="space-y-2">
+          <template x-for="c in customers" :key="c.id">
+            <div class="flex justify-between border-b py-3">
+              <div>
+                <div class="font-medium" x-text="c.name"></div>
+                <div class="text-xs text-gray-500" x-text="c.phone"></div>
+                <div class="text-xs text-gray-400" x-text="c.address"></div>
+                <div class="text-xs text-gray-400" x-text="c.device_model"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="!loadingCustomers && !customers.length && !customersError">
+        <div class="text-center text-gray-400 py-8">هیچ مشتری‌ای ثبت نشده است</div>
+      </template>
+
+      <div x-show="customersError" class="text-red-500 text-center py-4" x-text="customersError"></div>
+    </div>
+  </div>
+
+  <!-- INVENTORY PAGE -->
+  <div x-show="page==='inventory'">
+    <div class="bg-white p-4 rounded-xl">
+      <h2 class="font-bold mb-3">انبار</h2>
+      
+      <div x-show="loadingInventory" class="text-center py-4 text-gray-500">در حال بارگذاری...</div>
+      
+      <template x-if="!loadingInventory && inventory.length">
+        <div class="space-y-2">
+          <template x-for="item in inventory" :key="item.id">
+            <div class="flex justify-between border-b py-3">
+              <div>
+                <div class="font-medium" x-text="item.name"></div>
+                <div class="text-xs text-gray-500" x-text="item.category"></div>
+                <div class="text-xs text-gray-400" x-text="item.unit"></div>
+              </div>
+              <div class="text-left">
+                <div class="font-bold" x-text="item.quantity"></div>
+                <div class="text-xs" 
+                     :class="item.quantity <= item.min_quantity ? 'text-red-500' : 'text-green-500'"
+                     x-text="item.quantity <= item.min_quantity ? 'کمبود موجودی' : 'موجود'"></div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <template x-if="!loadingInventory && !inventory.length && !inventoryError">
+        <div class="text-center text-gray-400 py-8">هیچ کالایی در انبار ثبت نشده است</div>
+      </template>
+
+      <div x-show="inventoryError" class="text-red-500 text-center py-4" x-text="inventoryError"></div>
+    </div>
   </div>
 
 </main>
@@ -139,10 +262,15 @@ return {
   form:{username:'',password:''},
   error:'',
   loading:false,
+  loadingJobs:false,
+  loadingCustomers:false,
+  loadingInventory:false,
+  jobsError:'',
+  customersError:'',
+  inventoryError:'',
 
   page:'dashboard',
 
-  // 🧠 SAFE HELPERS (NEW)
   safeUserName(){
     return (this.user?.first_name || '') + ' ' + (this.user?.last_name || '');
   },
@@ -151,31 +279,52 @@ return {
     return (this.stats?.low_stock || 0) + (this.stats?.out_of_stock || 0);
   },
 
-  async api(path,opts={}){
+  statusLabel(status){
+    const labels = {
+      'registered': 'ثبت شده',
+      'pending': 'در انتظار',
+      'scheduled': 'برنامه‌ریزی شده',
+      'in_progress': 'در حال انجام',
+      'completed': 'تکمیل شده',
+      'cancelled': 'لغو شده',
+      'revisit': 'نیاز به مراجعه'
+    };
+    return labels[status] || status;
+  },
+
+  async api(path, opts={}){
     try{
-      const headers={'Content-Type':'application/json'};
+      const headers = {'Content-Type':'application/json'};
 
       if(this.token){
-        headers.Authorization='Bearer '+this.token;
+        headers.Authorization = 'Bearer ' + this.token;
       }
 
-      const res=await fetch('/api'+path,{...opts,headers});
+      const res = await fetch('/api' + path, {...opts, headers});
 
-      const data=await res.json().catch(()=>({}));
+      let data;
+      try {
+        data = await res.json();
+      } catch(e) {
+        data = {};
+      }
 
-      if(res.status===401){
+      if(res.status === 401){
+        console.warn('Session expired, logging out');
         this.logout();
-        return;
+        return null;
       }
 
       if(!res.ok){
-        throw new Error(data.msg || data.error || 'error');
+        const errorMsg = data.msg || data.error || 'خطا در ارتباط با سرور';
+        console.error('API Error:', res.status, errorMsg);
+        throw new Error(errorMsg);
       }
 
       return data;
 
     }catch(e){
-      console.error('API ERROR:',e);
+      console.error('API ERROR:', path, e);
       return null;
     }
   },
@@ -185,29 +334,40 @@ return {
   },
 
   async login(){
-    this.loading=true;
-    this.error='';
+    this.loading = true;
+    this.error = '';
 
-    const data=await this.api('/login',{
-      method:'POST',
-      body:JSON.stringify(this.form)
+    const data = await this.api('/login', {
+      method: 'POST',
+      body: JSON.stringify(this.form)
     });
 
-    if(data){
-      this.token=data.token;
-      this.user=data.user;
+    if(data && data.token){
+      this.token = data.token;
+      this.user = data.user;
 
-      localStorage.setItem('token',data.token);
-      localStorage.setItem('user',JSON.stringify(data.user));
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
 
       await this.loadDashboard();
+    } else {
+      this.error = 'نام کاربری یا رمز عبور اشتباه است';
     }
 
-    this.loading=false;
+    this.loading = false;
   },
 
   logout(){
+    if(this.token) {
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: {'Authorization': 'Bearer ' + this.token}
+      }).catch(() => {});
+    }
+    
     localStorage.clear();
+    this.token = null;
+    this.user = null;
     location.reload();
   },
 
@@ -215,8 +375,59 @@ return {
     const stats = await this.api('/stats');
     const jobs = await this.api('/jobs');
 
-    this.stats = stats || this.stats;
-    this.recentJobs = (jobs || []).slice(0,8);
+    if(stats) {
+      this.stats = stats;
+    }
+    
+    if(jobs && Array.isArray(jobs)) {
+      this.jobs = jobs;
+      this.recentJobs = jobs.slice(0, 8);
+    }
+  },
+
+  async loadJobs(){
+    this.loadingJobs = true;
+    this.jobsError = '';
+    
+    const jobs = await this.api('/jobs');
+    
+    if(jobs && Array.isArray(jobs)) {
+      this.jobs = jobs;
+    } else if(jobs === null) {
+      this.jobsError = 'خطا در بارگذاری سرویس‌ها';
+    }
+    
+    this.loadingJobs = false;
+  },
+
+  async loadCustomers(){
+    this.loadingCustomers = true;
+    this.customersError = '';
+    
+    const customers = await this.api('/customers');
+    
+    if(customers && Array.isArray(customers)) {
+      this.customers = customers;
+    } else if(customers === null) {
+      this.customersError = 'خطا در بارگذاری مشتریان';
+    }
+    
+    this.loadingCustomers = false;
+  },
+
+  async loadInventory(){
+    this.loadingInventory = true;
+    this.inventoryError = '';
+    
+    const inventory = await this.api('/inventory');
+    
+    if(inventory && Array.isArray(inventory)) {
+      this.inventory = inventory;
+    } else if(inventory === null) {
+      this.inventoryError = 'خطا در بارگذاری انبار';
+    }
+    
+    this.loadingInventory = false;
   },
 
   fmt(n){
@@ -228,3 +439,4 @@ return {
 
 </body>
 </html>
+
