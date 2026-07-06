@@ -44,7 +44,6 @@ def init_db():
     try:
         os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
         
-        # Check if database already exists and has tables
         if os.path.exists(DB_PATH):
             try:
                 db = get_db()
@@ -59,7 +58,6 @@ def init_db():
         
         db = get_db()
         
-        # Create tables
         db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,7 +115,6 @@ def init_db():
         
         db.commit()
         
-        # Create default admin
         cursor = db.execute("SELECT id FROM users WHERE username = 'admin'")
         if not cursor.fetchone():
             db.execute("""
@@ -159,31 +156,49 @@ def verify_token(token):
     except jwt.InvalidTokenError:
         return None
 
+@app.before_request
+def check_authentication():
+    # ✅ Bypass auth for public & static routes
+    if request.path in ['/', '/health', '/api/login', '/api/logout'] \
+       or request.path.startswith('/static/') \
+       or request.path.endswith(('.js', '.css', '.png', '.svg', '.ico')):
+        return None
+
+    # ✅ NEW: Bypass auth for all non-API routes
+    if not request.path.startswith('/api/'):
+        return None
+
+    # ✅ Require token for all other /api/* routes
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        logger.warning(f"auth_fail: missing/invalid Authorization header for {request.path}")
+        return jsonify({'error': 'Authorization header missing'}), 401
+
+    try:
+        token = auth_header.split(" ")[1]
+    except IndexError:
+        logger.warning(f"auth_fail: malformed token format for {request.path}")
+        return jsonify({'error': 'Invalid token format'}), 401
+
+    payload = verify_token(token)
+    if not payload:
+        logger.warning(f"auth_fail: expired/invalid token for {request.path}")
+        return jsonify({'error': 'Token is invalid or expired'}), 401
+
+    request.current_user = payload
+
 def token_required(f):
+    """Decorator for endpoints that require authentication"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = None
-        auth_header = request.headers.get('Authorization')
-        
-        if auth_header:
-            try:
-                token = auth_header.split(" ")[1]
-            except:
-                return jsonify({'error': 'Invalid token format'}), 401
-        
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
-        
-        payload = verify_token(token)
-        if not payload:
-            return jsonify({'error': 'Token is invalid or expired'}), 401
-        
-        request.current_user = payload
+        # Auth already checked by before_request middleware
+        if not hasattr(request, 'current_user'):
+            return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
-    
     return decorated
 
 def require_perm(permission):
+    """Decorator for endpoints that require specific permissions"""
     def decorator(f):
         @wraps(f)
         @token_required
@@ -191,11 +206,9 @@ def require_perm(permission):
             try:
                 user_role = request.current_user.get('role', 'user')
                 
-                # Superadmin has all permissions
                 if user_role == 'superadmin':
                     return f(*args, **kwargs)
                 
-                # Check specific permissions
                 allowed = {
                     'dashboard': ['admin', 'user'],
                     'jobs': ['admin', 'user'],
@@ -216,6 +229,7 @@ def require_perm(permission):
     return decorator
 
 def safe_call(f):
+    """Decorator for error handling"""
     @wraps(f)
     def decorated(*args, **kwargs):
         try:
@@ -225,7 +239,7 @@ def safe_call(f):
             return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
     return decorated
 
-# Health check endpoint
+# Health check endpoint (PUBLIC)
 @app.route('/health')
 def health():
     try:
@@ -237,17 +251,21 @@ def health():
         logger.error(f"Health check failed: {e}")
         return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
-# Serve frontend
+# Serve frontend (PUBLIC)
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
 
-# Auth endpoints
+# ✅ PUBLIC: Login endpoint - NO authentication required
 @app.route('/api/login', methods=['POST'])
 @limiter.limit(cfg("LOGIN_RATE_LIMIT"))
 @safe_call
 def login():
     data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'Request body required'}), 400
+    
     username = data.get('username', '')
     password = data.get('password', '')
     
@@ -263,6 +281,8 @@ def login():
     
     token = create_token(user['id'], user['role'])
     
+    logger.info(f"Login successful: {username}")
+    
     return jsonify({
         'token': token,
         'user': {
@@ -274,12 +294,13 @@ def login():
         }
     })
 
+# ✅ PUBLIC: Logout endpoint - NO authentication required
 @app.route('/api/logout', methods=['POST'])
 @safe_call
 def logout():
     return jsonify({'message': 'Logged out successfully'})
 
-# Stats endpoint
+# ✅ PROTECTED: Stats endpoint
 @app.route('/api/stats')
 @require_perm('dashboard')
 @safe_call
@@ -317,7 +338,7 @@ def get_stats():
         'out_of_stock': out_of_stock
     })
 
-# Jobs endpoints
+# ✅ PROTECTED: Jobs endpoints
 @app.route('/api/jobs', methods=['GET'])
 @require_perm('jobs')
 @safe_call
@@ -425,7 +446,7 @@ def delete_job(job_id):
     
     return jsonify({'message': 'Job deleted'})
 
-# Customers endpoints
+# ✅ PROTECTED: Customers endpoints
 @app.route('/api/customers', methods=['GET'])
 @require_perm('customers')
 @safe_call
@@ -528,7 +549,7 @@ def customer_jobs(cid):
     
     return jsonify([dict(j) for j in jobs])
 
-# Inventory endpoints
+# ✅ PROTECTED: Inventory endpoints
 @app.route('/api/inventory', methods=['GET'])
 @require_perm('inventory')
 @safe_call
