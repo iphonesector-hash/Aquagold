@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
       - name: Python syntax
-        run: python -m py_compile app.py app_v3.py app_extras.py ai_intake.py smart_intake.py
+        run: python -m py_compile app.py app_v3.py app_extras.py app_fixes.py ai_intake.py smart_intake.py
       - name: Smart intake tests
         env:
           PYTHONPATH: .
