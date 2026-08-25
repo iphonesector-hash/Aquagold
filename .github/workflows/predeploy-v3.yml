@@ -1,0 +1,58 @@
+name: AquaGold v3 predeploy
+
+on:
+  push:
+    branches:
+      - feature/aquagold-finance-map-v3
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Python syntax
+        run: python -m py_compile app.py app_v3.py app_extras.py app_fixes.py ai_intake.py smart_intake.py
+      - name: Smart intake tests
+        env:
+          PYTHONPATH: .
+        run: pytest -q tests/test_smart_intake.py
+      - name: Import application and verify v3 routes
+        env:
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          from app import app
+          rules = {rule.rule for rule in app.url_map.iter_rules()}
+          required = {
+              '/health', '/api/customers', '/api/jobs', '/api/expenses',
+              '/api/settlements', '/api/reports/daily', '/api/reports/analytics',
+              '/api/reports/insights', '/api/route/nearest', '/api/audit',
+              '/api/export.xlsx', '/api/smart/parse', '/api/smart/register',
+          }
+          missing = required - rules
+          assert not missing, f'missing routes: {sorted(missing)}'
+          print(f'Loaded {len(rules)} Flask routes successfully')
+          PY
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Frontend JavaScript syntax
+        run: node --check ui-v3.js
+      - name: Verify v3 UI capabilities are present
+        run: |
+          grep -q "گزارش روزانه شمسی" index.html
+          grep -q "نقشه زنده مشتری‌ها" index.html
+          grep -q "تحلیل مالی و سود و زیان" index.html
+          grep -q "تحلیل هوشمند کسب‌وکار" index.html
+          grep -q "ثبت هوشمند" index.html
+          grep -q "هزینه‌ها و خریدها" index.html
+          grep -q "Excel" index.html
+          ! grep -q ">انبار<" index.html
