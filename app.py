@@ -2,7 +2,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
+from flask import jsonify, request
+
 import app_v3
+from ai_intake import parse_with_ai
 
 
 def _row_json(row):
@@ -22,8 +25,20 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
-# Registers optional v3 routes (insights, nearest-next customer, audit, Excel export).
+# Registers v3 extras (insights, nearest-next customer, audit, Excel export).
 import app_extras  # noqa: E402,F401
+
+
+@app_v3.token_required
+def _smart_parse_ai():
+    text = (request.get_json() or {}).get("text", "")
+    if not text.strip():
+        return jsonify({"error": "متن لازم است"}), 400
+    return jsonify(parse_with_ai(text))
+
+
+# Preserve the existing /api/smart/parse URL while upgrading its implementation.
+app.view_functions["smart_parse"] = _smart_parse_ai
 
 if __name__ == "__main__":
     import os
