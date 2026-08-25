@@ -1,5 +1,5 @@
-const CACHE = 'aquagold-v3-20260825';
-const STATIC_ASSETS = ['/manifest.json', '/icon.svg'];
+const CACHE = 'aquagold-v4-20260825';
+const STATIC_ASSETS = ['/', '/manifest.json', '/icon.svg', '/ui-v3.js', '/ui-v3-base.js', '/ui-v4-enhancements.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC_ASSETS).catch(() => {})));
@@ -15,18 +15,20 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET' || request.url.includes('/api/')) return;
 
-  // Always prefer the network for app navigation so iPhone/Safari cannot stay on an old CRM shell.
   if (request.mode === 'navigate' || request.destination === 'document') {
     event.respondWith(fetch(request).then(response => {
       const copy = response.clone();
-      caches.open(CACHE).then(cache => cache.put('/index.html', copy));
+      caches.open(CACHE).then(cache => cache.put('/', copy));
       return response;
-    }).catch(() => caches.match('/index.html')));
+    }).catch(async () => (await caches.match(request)) || (await caches.match('/')) || new Response(
+      '<!doctype html><html lang="fa" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:system-ui;background:#071827;color:white;display:grid;place-items:center;min-height:100vh;text-align:center;padding:24px"><main><div style="font-size:52px">💧</div><h1>AquaGold</h1><p>اینترنت قطع است. پیش‌نویس‌های شما روی دستگاه حفظ شده‌اند.</p><button onclick="location.reload()" style="padding:12px 22px;border:0;border-radius:14px">تلاش دوباره</button></main></body></html>',
+      {headers:{'Content-Type':'text/html; charset=utf-8'}}
+    )));
     return;
   }
 
   event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
-    if (response && response.status === 200 && response.type === 'basic') {
+    if (response && response.status === 200) {
       const copy = response.clone();
       caches.open(CACHE).then(cache => cache.put(request, copy));
     }
