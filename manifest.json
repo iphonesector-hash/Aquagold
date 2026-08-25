@@ -1,15 +1,25 @@
 {
-  "name": "Aqua Gold",
-  "short_name": "Aqua Gold",
-  "description": "سیستم مدیریت خدمات تصفیه آب",
+  "id": "/",
+  "name": "AquaGold CRM",
+  "short_name": "AquaGold",
+  "description": "مدیریت هوشمند مشتری، سرویس، مالی و نقشه AquaGold",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0A1628",
-  "theme_color": "#1AA89A",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#071827",
+  "theme_color": "#0f766e",
   "orientation": "portrait-primary",
   "lang": "fa",
   "dir": "rtl",
+  "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "ثبت هوشمند", "short_name": "هوشمند", "url": "/?open=smart", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "مشتریان", "short_name": "مشتریان", "url": "/?open=customers", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
+    { "name": "نقشه", "short_name": "نقشه", "url": "/?open=map", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
   ]
 }
