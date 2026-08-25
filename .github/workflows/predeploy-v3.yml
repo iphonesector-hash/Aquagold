@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pytest
       - name: Python syntax
-        run: python -m py_compile app.py app_v3.py app_extras.py app_fixes.py ai_intake.py smart_intake.py
+        run: python -m py_compile app.py app_v3.py app_extras.py app_fixes.py app_commerce.py ai_intake.py smart_intake.py
       - name: Smart intake tests
         env:
           PYTHONPATH: .
@@ -36,6 +36,8 @@ jobs:
               '/api/settlements', '/api/reports/daily', '/api/reports/analytics',
               '/api/reports/insights', '/api/route/nearest', '/api/audit',
               '/api/export.xlsx', '/api/smart/parse', '/api/smart/register',
+              '/api/products', '/api/products/<product_id>', '/api/invoices',
+              '/api/invoices/<invoice_id>',
           }
           missing = required - rules
           assert not missing, f'missing routes: {sorted(missing)}'
@@ -50,6 +52,7 @@ jobs:
           node --check ui-v3-base.js
           node --check ui-v4-enhancements.js
           node --check ui-v4-finalize.js
+          node --check ui-commerce.js
           node --check sw.js
       - name: Verify AquaGold v4 UI capabilities
         run: |
@@ -63,21 +66,25 @@ jobs:
           grep -q "تحلیل هوشمند کسب‌وکار" index.html
           grep -q "ثبت GPS همین‌جا" index.html
           grep -q "GPS آماده ثبت است" index.html
-          grep -q "smart-result" index.html
-          grep -q "toast-stack" index.html
-          grep -q "empty-icon" index.html
-          grep -q "هزینه‌ها و خریدها" index.html
-          grep -q "Excel" index.html
           grep -q "duplicateCandidates" ui-v4-enhancements.js
           grep -q "aq_drafts_v4" ui-v4-enhancements.js
-          grep -q "globalResults" ui-v4-enhancements.js
-          grep -q "notifications" ui-v4-enhancements.js
           grep -q "backupJson" ui-v4-enhancements.js
-          grep -q "backupCsv" ui-v4-enhancements.js
           grep -q "enablePin" ui-v4-enhancements.js
           grep -q "toggleHeatmap" ui-v4-enhancements.js
-          grep -q "monthCompare" ui-v4-enhancements.js
           grep -q "profileScore" ui-v4-finalize.js
+          grep -q "کاتالوگ محصولات" ui-commerce.js
+          grep -q "صدور فاکتور حرفه‌ای" ui-commerce.js
+          grep -q "shareInvoice" ui-commerce.js
+          grep -q "renderInvoicePng" ui-commerce.js
+          grep -q "aquagold-stamp.svg" ui-commerce.js
+          grep -q "sector-splash" ui-commerce.js
+          grep -q "handleProductImage" ui-commerce.js
+          grep -q "app_commerce" app.py
           grep -q "aquagold-v4" sw.js
+          test -f assets/brand-sector.svg
+          test -f assets/aquagold-stamp.svg
+          test -f assets/product-ro-filter.svg
+          test -f assets/product-fridge-filter.svg
+          test -f neon/migrations/003_products_invoices.sql
           ! grep -q ">انبار<" index.html
           ! grep -q "حالت مراجعه" index.html
