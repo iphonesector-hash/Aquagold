@@ -1,16 +1,33 @@
 services:
+  postgres:
+    image: postgis/postgis:16-3.5
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aquagold
+      POSTGRES_USER: aquagold
+      POSTGRES_PASSWORD: ${AQUAGOLD_DB_PASSWORD:?Set AQUAGOLD_DB_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aquagold -d aquagold"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
   backend:
     build: .
-    container_name: aquagold-backend
-    restart: always
+    restart: unless-stopped
     environment:
-      - SECRET_KEY=aquagold-secret-key-change-in-production
-      - DB_PATH=/app/data/app.db
-    volumes:
-      - db_data:/app/data
-      - upload_data:/app/uploads
-    networks:
-      - aquagold-net
+      AQUAGOLD_ENV: development
+      AQUAGOLD_DATABASE_URL: postgresql://aquagold:${AQUAGOLD_DB_PASSWORD}@postgres:5432/aquagold
+      AQUAGOLD_SECRET_KEY: ${AQUAGOLD_SECRET_KEY:?Set AQUAGOLD_SECRET_KEY in .env}
+      AQUAGOLD_ADMIN_USERNAME: ${AQUAGOLD_ADMIN_USERNAME:-}
+      AQUAGOLD_ADMIN_PASSWORD: ${AQUAGOLD_ADMIN_PASSWORD:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+    command: ["sh", "-c", "python scripts/migrate.py && exec gunicorn --bind 0.0.0.0:5000 --workers 2 --threads 2 --timeout 120 --access-logfile - --error-logfile - app:app"]
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
@@ -20,8 +37,7 @@ services:
 
   nginx:
     image: nginx:alpine
-    container_name: aquagold-nginx
-    restart: always
+    restart: unless-stopped
     ports:
       - "80:80"
     volumes:
@@ -29,16 +45,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    networks:
-      - aquagold-net
 
 volumes:
-  db_data:
-    driver: local
-  upload_data:
-    driver: local
-
-networks:
-  aquagold-net:
-    driver: bridge
-
+  postgres_data:

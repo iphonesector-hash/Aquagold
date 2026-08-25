@@ -15,11 +15,13 @@
   "categories": ["business", "productivity"],
   "prefer_related_applications": false,
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "ثبت هوشمند", "short_name": "هوشمند", "url": "/?open=smart", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
-    { "name": "مشتریان", "short_name": "مشتریان", "url": "/?open=customers", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] },
-    { "name": "نقشه", "short_name": "نقشه", "url": "/?open=map", "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
+    { "name": "ثبت هوشمند", "short_name": "هوشمند", "url": "/?open=smart", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "مشتریان", "short_name": "مشتریان", "url": "/?open=customers", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "نقشه", "short_name": "نقشه", "url": "/?open=map", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }

@@ -1,4 +1,4 @@
--- AquaGold Smart CRM + Geospatial foundation for Neon Postgres
+-- AquaGold 002: Smart CRM + geospatial foundation for Neon Postgres
 -- Server-only database access from the AquaGold backend/Vercel functions.
 
 create extension if not exists postgis;

@@ -1,15 +1,14 @@
-# AquaGold Smart CRM rollout
+# AquaGold production hardening
 
-## Verified
-- Dedicated Neon Postgres project is active and separate from existing apps.
-- PostgreSQL 18 schema is applied on Neon main.
-- PostGIS and pg_trgm are enabled.
-- Customer, multiple phones, service visits, service items, intake sessions, users, and inventory schemas are in place.
-- GPS proximity lookup was tested with the Sadeghi sample and returned the customer at ~5m with both phone numbers and 5,600,000 last amount.
-- Vercel Git integration is connected to this repository.
-- Preview deployment reached READY.
-- Preview `/health` returned HTTP 200 with `{database: neon, status: healthy}`.
-- CORS configuration was corrected for the Vercel production/branch aliases.
+This change consolidates the active v4 application and adds:
 
-## Production rollout
-After this verified preview, merge PR #1 into `main`. Vercel Git integration should then produce a fresh production deployment for `aquagold-db.vercel.app`.
+- revocable cookie sessions, CSRF, rate limits, roles and audit controls;
+- ordered, checksummed migrations plus phone uniqueness and overpayment integrity;
+- strict API validation and PostgreSQL/PostGIS integration tests;
+- paginated customer/service queries and Neon pooled connections;
+- self-hosted pinned frontend dependencies and security headers;
+- a user-bound IndexedDB offline cache, ordered idempotent mutation replay and PWA shell;
+- server-side geocoding and road-aware route planning with a documented fallback;
+- a disposable PostGIS CI database, dependency auditing and deployment runbook.
+
+Production migration and promotion are intentionally separate approval-gated operations. Test the exact commit on a Neon branch and Vercel Preview before touching the production database.

@@ -1,4 +1,4 @@
--- AquaGold v3: finance, reports, customer identity, editable map metadata
+-- AquaGold 003: finance, reports, customer identity, editable map metadata
 
 alter table public.customers_v2
   add column if not exists map_label text,

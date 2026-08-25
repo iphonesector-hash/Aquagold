@@ -20,11 +20,16 @@ def test_uuid_validation():
         _uuid_or_none("not-a-uuid")
 
 
-def test_product_cleaning_never_accepts_negative_price_or_sort():
-    product = _clean_product({"name": "  فیلتر  ", "price": -100, "sort_order": -2})
+def test_product_cleaning_rejects_negative_price_or_sort():
+    with pytest.raises(ValueError):
+        _clean_product({"name": "  فیلتر  ", "price": -100, "sort_order": -2})
+
+
+def test_product_cleaning_normalizes_valid_input():
+    product = _clean_product({"name": "  فیلتر  ", "price": 100, "sort_order": 2})
     assert product["name"] == "فیلتر"
-    assert product["price"] == 0
-    assert product["sort_order"] == 0
+    assert product["price"] == 100
+    assert product["sort_order"] == 2
 
 
 def test_invoice_calculation_with_fractional_quantity():
@@ -42,10 +47,10 @@ def test_invoice_calculation_with_fractional_quantity():
     assert subtotal == 2600000
 
 
-def test_invoice_bad_quantity_falls_back_to_one():
-    items, subtotal = _clean_invoice_items([{"title": "فیلتر", "quantity": "NaN", "unit_price": 500000}])
-    assert items[0]["quantity"] == Decimal("1")
-    assert subtotal == 500000
+@pytest.mark.parametrize("quantity", ["NaN", 0, -1, 10001])
+def test_invoice_bad_quantity_is_rejected(quantity):
+    with pytest.raises(ValueError):
+        _clean_invoice_items([{"title": "فیلتر", "quantity": quantity, "unit_price": 500000}])
 
 
 def test_invoice_invalid_product_uuid_is_rejected():

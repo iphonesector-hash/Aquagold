@@ -3,7 +3,16 @@ from uuid import UUID
 
 from flask import jsonify, request
 
-from app_v3 import app, audit, get_db, row_json, token_required
+from app_v3 import app, audit, get_db, roles_required, row_json, token_required
+from aquagold_validation import (
+    ValidationError,
+    boolean as valid_boolean,
+    choice as valid_choice,
+    integer as valid_integer,
+    text as valid_text,
+    timestamp as valid_timestamp,
+    uuid as valid_uuid,
+)
 
 
 def _safe_int(value, default=0, minimum=0):
@@ -24,36 +33,48 @@ def _uuid_or_none(value, label="شناسه"):
 
 
 def _clean_product(data):
+    image_url = valid_text(data.get("image_url"), "نشانی تصویر", max_length=1_500_000)
+    if image_url and not image_url.startswith(("/assets/", "https://", "data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,")):
+        raise ValidationError("تصویر باید فایل داخلی، HTTPS یا تصویر فشرده معتبر باشد")
     return {
-        "name": (data.get("name") or "").strip(),
-        "category": (data.get("category") or "filter").strip(),
-        "description": (data.get("description") or "").strip() or None,
-        "price": _safe_int(data.get("price"), 0, 0),
-        "image_url": (data.get("image_url") or "").strip() or None,
-        "badge": (data.get("badge") or "").strip() or None,
-        "origin": (data.get("origin") or "").strip() or None,
-        "lifetime_text": (data.get("lifetime_text") or "").strip() or None,
-        "is_active": bool(data.get("is_active", True)),
-        "sort_order": _safe_int(data.get("sort_order"), 0, 0),
+        "name": valid_text(data.get("name"), "نام محصول", required=True, max_length=250),
+        "category": valid_choice(data.get("category"), "دسته محصول", {"device_filter", "fridge_filter", "accessory", "service"}, default="device_filter"),
+        "description": valid_text(data.get("description"), "توضیحات محصول", max_length=4000),
+        "price": valid_integer(data.get("price"), "قیمت", default=0),
+        "image_url": image_url,
+        "badge": valid_text(data.get("badge"), "برچسب", max_length=80),
+        "origin": valid_text(data.get("origin"), "کشور یا برند", max_length=120),
+        "lifetime_text": valid_text(data.get("lifetime_text"), "عمر محصول", max_length=120),
+        "is_active": valid_boolean(data.get("is_active"), True),
+        "sort_order": valid_integer(data.get("sort_order"), "ترتیب", minimum=0, maximum=1_000_000, default=0),
     }
 
 
 def _clean_invoice_items(items):
+    if not isinstance(items, list):
+        raise ValidationError("ردیف‌های فاکتور باید به صورت فهرست ارسال شوند")
+    if len(items) > 100:
+        raise ValidationError("هر فاکتور حداکثر می‌تواند ۱۰۰ ردیف داشته باشد")
     clean_items = []
     subtotal = 0
     for idx, item in enumerate(items or []):
-        title = (item.get("title") or "").strip()
+        if not isinstance(item, dict):
+            raise ValidationError("ساختار یکی از ردیف‌های فاکتور معتبر نیست")
+        title = valid_text(item.get("title"), "شرح ردیف", max_length=500)
         if not title:
             continue
+        raw_quantity = item.get("quantity")
         try:
-            qty = Decimal(str(item.get("quantity") or 1))
-            if not qty.is_finite() or qty <= 0:
-                qty = Decimal("1")
+            qty = Decimal(str(1 if raw_quantity in (None, "") else raw_quantity))
         except (InvalidOperation, TypeError, ValueError):
-            qty = Decimal("1")
-        unit = _safe_int(item.get("unit_price"), 0, 0)
+            raise ValidationError("تعداد یکی از ردیف‌های فاکتور معتبر نیست")
+        if not qty.is_finite() or not Decimal("0") < qty <= Decimal("10000"):
+            raise ValidationError("تعداد هر ردیف باید بیشتر از صفر و حداکثر ۱۰۰۰۰ باشد")
+        unit = valid_integer(item.get("unit_price"), "قیمت واحد", default=0)
         line = int(qty * unit)
         subtotal += line
+        if line > 10**15 or subtotal > 10**15:
+            raise ValidationError("مبلغ فاکتور بیش از سقف مجاز است")
         clean_items.append(
             {
                 "product_id": _uuid_or_none(item.get("product_id"), "شناسه محصول"),
@@ -77,29 +98,30 @@ def _invoice_payload(row, items=None):
 @app.get("/api/products")
 @token_required
 def products_list():
-    include_inactive = request.args.get("all") == "1"
+    include_inactive = request.args.get("all") == "1" and request.current_user.get("role") in {"admin", "superadmin"}
+    limit = valid_integer(request.args.get("limit"), "تعداد محصول", minimum=1, maximum=500, default=300)
     with get_db() as db, db.cursor() as cur:
         cur.execute(
             """select * from products where (%s or is_active=true)
-               order by sort_order asc, created_at desc""",
-            (include_inactive,),
+               order by sort_order asc, created_at desc limit %s""",
+            (include_inactive, limit),
         )
         rows = cur.fetchall()
     return jsonify([row_json(r) for r in rows])
 
 
 @app.post("/api/products")
-@token_required
+@roles_required("admin")
 def product_create():
-    data = _clean_product(request.get_json() or {})
-    if not data["name"]:
-        return jsonify({"error": "نام محصول الزامی است"}), 400
+    incoming = request.get_json() or {}
+    client_id = valid_uuid(incoming.get("client_id"), "شناسه آفلاین محصول", required=False)
+    data = _clean_product(incoming)
     with get_db() as db, db.cursor() as cur:
         cur.execute(
-            """insert into products(name,category,description,price,image_url,badge,origin,lifetime_text,is_active,sort_order)
-               values(%(name)s,%(category)s,%(description)s,%(price)s,%(image_url)s,%(badge)s,%(origin)s,%(lifetime_text)s,%(is_active)s,%(sort_order)s)
+            """insert into products(id,name,category,description,price,image_url,badge,origin,lifetime_text,is_active,sort_order)
+               values(coalesce(%(client_id)s::uuid,gen_random_uuid()),%(name)s,%(category)s,%(description)s,%(price)s,%(image_url)s,%(badge)s,%(origin)s,%(lifetime_text)s,%(is_active)s,%(sort_order)s)
                returning *""",
-            data,
+            {**data, "client_id": client_id},
         )
         row = cur.fetchone()
         audit(cur, "product", row["id"], "create", None, row_json(row))
@@ -107,7 +129,7 @@ def product_create():
 
 
 @app.patch("/api/products/<product_id>")
-@token_required
+@roles_required("admin")
 def product_update(product_id):
     try:
         product_id = _uuid_or_none(product_id, "شناسه محصول")
@@ -122,8 +144,6 @@ def product_update(product_id):
         merged = dict(before)
         merged.update(incoming)
         data = _clean_product(merged)
-        if not data["name"]:
-            return jsonify({"error": "نام محصول الزامی است"}), 400
         cur.execute(
             """update products set name=%(name)s,category=%(category)s,description=%(description)s,price=%(price)s,
                image_url=%(image_url)s,badge=%(badge)s,origin=%(origin)s,lifetime_text=%(lifetime_text)s,
@@ -139,13 +159,15 @@ def product_update(product_id):
 @app.get("/api/invoices")
 @token_required
 def invoices_list():
+    limit = valid_integer(request.args.get("limit"), "تعداد فاکتور", minimum=1, maximum=500, default=300)
     with get_db() as db, db.cursor() as cur:
         cur.execute(
             """select i.*, trim(concat_ws(' ',c.first_name,c.last_name)) customer_name,
                       coalesce((select p.phone from customer_phones p where p.customer_id=c.id order by p.is_primary desc,p.id limit 1),'') customer_phone,
                       (select count(*) from invoice_items x where x.invoice_id=i.id) item_count
                from invoices i left join customers_v2 c on c.id=i.customer_id
-               order by i.issued_at desc, i.invoice_no desc limit 300"""
+               order by i.issued_at desc, i.invoice_no desc limit %s""",
+            (limit,),
         )
         rows = cur.fetchall()
     return jsonify([row_json(r) for r in rows])
@@ -174,17 +196,21 @@ def invoice_detail(invoice_id):
 
 
 @app.post("/api/invoices")
-@token_required
+@roles_required("technician")
 def invoice_create():
     data = request.get_json() or {}
     try:
-        customer_id = _uuid_or_none(data.get("customer_id"), "شناسه مشتری")
+        client_id = valid_uuid(data.get("client_id"), "شناسه آفلاین فاکتور", required=False)
+        customer_id = valid_uuid(data.get("customer_id"), "شناسه مشتری", required=False)
         clean_items, subtotal = _clean_invoice_items(data.get("items") or [])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     if not clean_items:
         return jsonify({"error": "حداقل یک ردیف معتبر فاکتور لازم است"}), 400
-    discount = min(_safe_int(data.get("discount"), 0, 0), subtotal)
+    discount = min(valid_integer(data.get("discount"), "تخفیف", default=0), subtotal)
+    issued_at = valid_timestamp(data.get("issued_at"), "تاریخ فاکتور")
+    notes = valid_text(data.get("notes"), "توضیحات فاکتور", max_length=4000)
+    status = valid_choice(data.get("status"), "وضعیت فاکتور", {"draft", "issued", "paid", "void"}, default="issued")
     total = subtotal - discount
     with get_db() as db, db.cursor() as cur:
         if customer_id:
@@ -199,16 +225,17 @@ def invoice_create():
             if missing:
                 return jsonify({"error": "یک یا چند محصول انتخاب‌شده دیگر وجود ندارد"}), 400
         cur.execute(
-            """insert into invoices(customer_id,issued_at,subtotal,discount,total,notes,status,created_by)
-               values(%s,coalesce(%s::timestamptz,now()),%s,%s,%s,%s,%s,%s) returning *""",
+            """insert into invoices(id,customer_id,issued_at,subtotal,discount,total,notes,status,created_by)
+               values(coalesce(%s::uuid,gen_random_uuid()),%s,coalesce(%s::timestamptz,now()),%s,%s,%s,%s,%s,%s) returning *""",
             (
+                client_id,
                 customer_id,
-                data.get("issued_at") or None,
+                issued_at,
                 subtotal,
                 discount,
                 total,
-                (data.get("notes") or "").strip() or None,
-                data.get("status") or "issued",
+                notes,
+                status,
                 str(request.current_user.get("user_id")),
             ),
         )
@@ -241,7 +268,7 @@ def invoice_create():
 
 
 @app.patch("/api/invoices/<invoice_id>")
-@token_required
+@roles_required("admin")
 def invoice_update(invoice_id):
     try:
         invoice_id = _uuid_or_none(invoice_id, "شناسه فاکتور")
@@ -253,10 +280,12 @@ def invoice_update(invoice_id):
         before = cur.fetchone()
         if not before:
             return jsonify({"error": "فاکتور پیدا نشد"}), 404
+        notes = valid_text(data.get("notes", before["notes"]), "توضیحات فاکتور", max_length=4000)
+        status = valid_choice(data.get("status", before["status"]), "وضعیت فاکتور", {"draft", "issued", "paid", "void"}, default="issued")
         cur.execute(
             """update invoices set notes=coalesce(%s,notes), status=coalesce(%s,status), updated_at=now()
                where id=%s returning *""",
-            (data.get("notes"), data.get("status"), invoice_id),
+            (notes, status, invoice_id),
         )
         row = cur.fetchone()
         audit(cur, "invoice", invoice_id, "update", row_json(before), row_json(row))

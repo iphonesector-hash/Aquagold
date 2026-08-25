@@ -1,4 +1,4 @@
--- AquaGold v4 commerce: editable product catalog and professional invoices
+-- AquaGold 004: editable product catalog and professional invoices
 
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
