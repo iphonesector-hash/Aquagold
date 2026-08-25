@@ -1,3 +1,11 @@
 # Vercel target
 
-The intended production architecture is Vercel + dedicated Supabase/PostGIS. The current Docker entrypoint remains available for compatibility while the Vercel deployment configuration is added in the next rollout step.
+AquaGold production architecture is Vercel + a dedicated Neon Postgres/PostGIS database.
+
+Deployment expectations:
+- Production uses the Neon main branch.
+- Preview deployments use the connected Neon preview/database branch integration when available.
+- The browser never receives the database connection string; all database access stays in the Flask/Vercel backend.
+- `app.py` is the production Flask entrypoint and `vercel.json` contains the Vercel function configuration.
+
+This update intentionally triggers the first Git-integrated Vercel preview for the smart CRM branch.
