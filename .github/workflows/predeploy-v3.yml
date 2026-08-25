@@ -45,7 +45,12 @@ jobs:
         with:
           node-version: '22'
       - name: Frontend JavaScript syntax
-        run: node --check ui-v3.js
+        run: |
+          node --check ui-v3.js
+          node --check ui-v3-base.js
+          node --check ui-v4-enhancements.js
+          node --check ui-v4-finalize.js
+          node --check sw.js
       - name: Verify AquaGold v4 UI capabilities
         run: |
           grep -q "AquaGold CRM v4" index.html
@@ -63,5 +68,16 @@ jobs:
           grep -q "empty-icon" index.html
           grep -q "هزینه‌ها و خریدها" index.html
           grep -q "Excel" index.html
+          grep -q "duplicateCandidates" ui-v4-enhancements.js
+          grep -q "aq_drafts_v4" ui-v4-enhancements.js
+          grep -q "globalResults" ui-v4-enhancements.js
+          grep -q "notifications" ui-v4-enhancements.js
+          grep -q "backupJson" ui-v4-enhancements.js
+          grep -q "backupCsv" ui-v4-enhancements.js
+          grep -q "enablePin" ui-v4-enhancements.js
+          grep -q "toggleHeatmap" ui-v4-enhancements.js
+          grep -q "monthCompare" ui-v4-enhancements.js
+          grep -q "profileScore" ui-v4-finalize.js
+          grep -q "aquagold-v4" sw.js
           ! grep -q ">انبار<" index.html
           ! grep -q "حالت مراجعه" index.html
