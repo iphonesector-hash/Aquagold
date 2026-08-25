@@ -8,7 +8,7 @@ create table if not exists public.customers_v2 (
   id uuid primary key default gen_random_uuid(),
   first_name text,
   last_name text not null,
-  normalized_name text generated always as (lower(trim(concat_ws(' ', first_name, last_name)))) stored,
+  normalized_name text not null default '',
   address text,
   location geography(point, 4326),
   location_accuracy_m numeric,
@@ -72,6 +72,7 @@ create index if not exists customer_phones_phone_idx on public.customer_phones (
 create index if not exists service_visits_customer_created_idx on public.service_visits (customer_id, created_at desc);
 create index if not exists service_visits_visit_location_gix on public.service_visits using gist (visit_location);
 
+-- normalized_name is maintained by the application layer for PostgreSQL 18 compatibility.
 -- Example nearest-customer query used by the backend:
 -- select c.id, c.first_name, c.last_name, c.address,
 --        st_distance(c.location, st_setsrid(st_makepoint(:lng, :lat), 4326)::geography) as distance_m
