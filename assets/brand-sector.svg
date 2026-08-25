@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sector AquaGold logo">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#06b6d4"/><stop offset="1" stop-color="#14b8a6"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity=".18"/></filter></defs>
+<rect width="512" height="512" rx="128" fill="#071827"/>
+<circle cx="256" cy="256" r="158" fill="none" stroke="url(#g)" stroke-width="18" stroke-dasharray="720 280" stroke-linecap="round" filter="url(#s)"/>
+<path d="M258 112c-44 66-93 119-93 190 0 55 41 98 93 98s93-43 93-98c0-71-49-124-93-190Z" fill="url(#g)"/>
+<path d="M221 308c14 28 39 43 71 39" fill="none" stroke="#dffcff" stroke-width="15" stroke-linecap="round" opacity=".9"/>
+<path d="M127 174c28-37 64-66 107-85" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" opacity=".28"/>
+<text x="256" y="474" font-family="Arial,sans-serif" font-size="38" font-weight="700" text-anchor="middle" fill="#e6fbff" letter-spacing="7">SECTOR</text>
+</svg>
