@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>AquaGold Smart CRM</title>
+  <link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
+  <script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
+  <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box} body{margin:0;font-family:Vazirmatn,system-ui;background:#f4f7f8;color:#102326}
+    header{padding:14px 16px;background:#fff;border-bottom:1px solid #dde7e9;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+    .wrap{max-width:980px;margin:auto;padding:14px}.card{background:#fff;border:1px solid #e1eaec;border-radius:18px;padding:14px;margin-bottom:14px;box-shadow:0 8px 24px #1023260a}
+    #map{height:42vh;min-height:320px;border-radius:16px;overflow:hidden}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px} textarea,input{width:100%;border:1px solid #cedbde;border-radius:13px;padding:12px;font:inherit;background:#fbfdfd}
+    button{border:0;border-radius:13px;padding:11px 14px;font:inherit;cursor:pointer;background:#118d83;color:#fff}.ghost{background:#e7f5f3;color:#0e6f68}.danger{background:#9b2733}.muted{color:#62777b;font-size:13px}.result{line-height:1.9}.pill{display:inline-block;background:#edf7f6;border-radius:999px;padding:4px 9px;margin:3px;font-size:12px}.nearby{padding:10px 0;border-bottom:1px solid #edf1f2}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.grow{flex:1}
+    @media(max-width:700px){.grid{grid-template-columns:1fr}#map{height:38vh;min-height:280px}.wrap{padding:10px}}
+  </style>
+</head>
+<body>
+<header><strong>💎 AquaGold — نقشه و ثبت هوشمند</strong><a href="/" style="color:#118d83;text-decoration:none">داشبورد</a></header>
+<div class="wrap">
+  <div class="card"><div id="map"></div><div class="row" style="margin-top:10px"><button onclick="locateMe()">📍 موقعیت من</button><button class="ghost" onclick="loadNearby()">مشتری‌های نزدیک</button><span id="gps" class="muted"></span></div></div>
+  <div class="grid">
+    <section class="card"><h3>🤖 ثبت از روی متن</h3><textarea id="chat" rows="9" placeholder="متن سرویس را مثل پیام روزانه‌ات اینجا وارد کن..."></textarea><div class="row" style="margin-top:10px"><button onclick="parseText()">تحلیل متن</button><button class="ghost" onclick="registerVisit()">ثبت مشتری و مراجعه</button></div><div id="parseResult" class="result muted" style="margin-top:12px"></div></section>
+    <section class="card"><h3>📌 مشتری‌های اطراف</h3><div id="nearby" class="muted">اول موقعیتت را بگیر.</div></section>
+  </div>
+</div>
+<script>
+const token=localStorage.getItem('token');
+if(!token){location.href='/';}
+let currentPos=null, parsed=null, markers=[];
+const map=new maplibregl.Map({container:'map',center:[51.389,35.689],zoom:10,style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},layers:[{id:'osm',type:'raster',source:'osm'}]}});
+map.addControl(new maplibregl.NavigationControl(),'top-left');
+function api(url,opts={}){opts.headers={...(opts.headers||{}),'Authorization':'Bearer '+token,'Content-Type':'application/json'};return fetch(url,opts).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'خطای ارتباط');return d})}
+function locateMe(){if(!navigator.geolocation)return alert('GPS در این مرورگر در دسترس نیست');navigator.geolocation.getCurrentPosition(p=>{currentPos={latitude:p.coords.latitude,longitude:p.coords.longitude,accuracy:p.coords.accuracy};document.getElementById('gps').textContent=`دقت تقریبی ${Math.round(p.coords.accuracy)} متر`;map.flyTo({center:[p.coords.longitude,p.coords.latitude],zoom:17});new maplibregl.Marker({color:'#118d83'}).setLngLat([p.coords.longitude,p.coords.latitude]).addTo(map);loadNearby();},e=>alert('دسترسی موقعیت فعال نیست: '+e.message),{enableHighAccuracy:true,timeout:12000,maximumAge:15000})}
+async function parseText(){try{parsed=await api('/api/smart/parse',{method:'POST',body:JSON.stringify({text:document.getElementById('chat').value})});renderParsed()}catch(e){alert(e.message)}}
+function renderParsed(){const p=parsed||{};document.getElementById('parseResult').innerHTML=`<b>نام:</b> ${p.last_name||'—'}<br><b>تلفن:</b> ${(p.phones||[]).join('، ')||'—'}<br><b>آدرس:</b> ${p.address||'—'}<br><b>سرویس:</b> ${p.service_type||'—'}<br><b>ویزیتور:</b> ${p.visitor_code||'—'}<br><b>زمان:</b> ${p.time_text||'—'}<br><b>مبلغ:</b> ${p.amount?Number(p.amount).toLocaleString('fa-IR'):'ثبت نشده'}`}
+async function registerVisit(){if(!parsed)await parseText();if(!parsed)return;if(!confirm('این اطلاعات ثبت شود؟'))return;try{const body={text:document.getElementById('chat').value,parsed,...(currentPos||{})};const r=await api('/api/smart/register',{method:'POST',body:JSON.stringify(body)});alert(`ثبت شد — مشتری #${r.customer_id}`);loadNearby()}catch(e){alert(e.message)}}
+async function loadNearby(){if(!currentPos)return locateMe();try{const rows=await api(`/api/customers/nearby?lat=${currentPos.latitude}&lng=${currentPos.longitude}&radius=150`);markers.forEach(m=>m.remove());markers=[];const box=document.getElementById('nearby');if(!rows.length){box.innerHTML='مشتری ثبت‌شده‌ای در شعاع ۱۵۰ متری پیدا نشد.';return}box.innerHTML=rows.map(c=>`<div class="nearby"><b>${c.name||'بدون نام'}</b> <span class="pill">${Math.round(c.distance_m)} متر</span><br><span class="muted">${c.address||''}</span><br><span class="muted">آخرین سرویس: ${c.last_service||'—'} | دریافتی: ${c.last_amount?Number(c.last_amount).toLocaleString('fa-IR'):'—'}</span></div>`).join('');rows.forEach(c=>{const m=new maplibregl.Marker().setLngLat([c.longitude,c.latitude]).setPopup(new maplibregl.Popup().setHTML(`<b>${c.name||''}</b><br>${c.address||''}<br>${(c.phones||[]).join('<br>')}`)).addTo(map);markers.push(m)})}catch(e){document.getElementById('nearby').textContent=e.message}}
+</script>
+</body></html>
