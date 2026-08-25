@@ -21,12 +21,12 @@ def _row_json(row):
     return out
 
 
-# Route functions resolve this helper from app_v3 at request time.
 app_v3.row_json = _row_json
 app = app_v3.app
 
-# Registers v3 extras (insights, nearest-next customer, audit, Excel export).
+# Registers v3 extras and PostgreSQL 18 compatibility fixes.
 import app_extras  # noqa: E402,F401
+import app_fixes  # noqa: E402,F401
 
 
 @app_v3.token_required
@@ -37,7 +37,6 @@ def _smart_parse_ai():
     return jsonify(parse_with_ai(text))
 
 
-# Preserve the existing /api/smart/parse URL while upgrading its implementation.
 app.view_functions["smart_parse"] = _smart_parse_ai
 
 if __name__ == "__main__":
