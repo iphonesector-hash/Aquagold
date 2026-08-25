@@ -22,6 +22,9 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
+# Registers optional v3 routes (insights, nearest-next customer, audit, Excel export).
+import app_extras  # noqa: E402,F401
+
 if __name__ == "__main__":
     import os
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
