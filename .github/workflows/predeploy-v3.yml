@@ -1,9 +1,9 @@
-name: AquaGold v3 predeploy
+name: AquaGold v4 predeploy
 
 on:
   push:
     branches:
-      - feature/aquagold-finance-map-v3
+      - feature/smart-gps-after-analysis
   pull_request:
     branches:
       - main
@@ -24,7 +24,7 @@ jobs:
         env:
           PYTHONPATH: .
         run: pytest -q tests/test_smart_intake.py
-      - name: Import application and verify v3 routes
+      - name: Import application and verify API routes
         env:
           PYTHONPATH: .
         run: |
@@ -46,13 +46,22 @@ jobs:
           node-version: '22'
       - name: Frontend JavaScript syntax
         run: node --check ui-v3.js
-      - name: Verify v3 UI capabilities are present
+      - name: Verify AquaGold v4 UI capabilities
         run: |
+          grep -q "AquaGold CRM v4" index.html
+          grep -q "bottom-nav" index.html
+          grep -q "toggleTheme" index.html
+          grep -q "روز کاریت، یک نگاه" index.html
           grep -q "گزارش روزانه شمسی" index.html
           grep -q "نقشه زنده مشتری‌ها" index.html
           grep -q "تحلیل مالی و سود و زیان" index.html
           grep -q "تحلیل هوشمند کسب‌وکار" index.html
-          grep -q "ثبت هوشمند" index.html
+          grep -q "ثبت GPS همین‌جا" index.html
+          grep -q "GPS آماده ثبت است" index.html
+          grep -q "smart-result" index.html
+          grep -q "toast-stack" index.html
+          grep -q "empty-icon" index.html
           grep -q "هزینه‌ها و خریدها" index.html
           grep -q "Excel" index.html
           ! grep -q ">انبار<" index.html
+          ! grep -q "حالت مراجعه" index.html
