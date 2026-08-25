@@ -8,4 +8,4 @@ Deployment expectations:
 - The browser never receives the database connection string; all database access stays in the Flask/Vercel backend.
 - `app.py` is the production Flask entrypoint and `vercel.json` contains the Vercel function configuration.
 
-This update intentionally triggers the first Git-integrated Vercel preview for the smart CRM branch.
+Preview verification completed successfully. This main-branch update intentionally triggers the production deployment.
