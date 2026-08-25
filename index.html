@@ -2,441 +2,115 @@
 <html lang="fa" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Aqua Gold</title>
-
-<meta name="theme-color" content="#1AA89A">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AquaGold CRM</title>
+<meta name="theme-color" content="#0f766e">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-
-<script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet">
-
+<link href="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
+<script src="https://unpkg.com/maplibre-gl@5.6.1/dist/maplibre-gl.js"></script>
 <style>
-body{font-family:Vazirmatn,system-ui,sans-serif;margin:0}
-[x-cloak]{display:none!important}
+:root{color-scheme:light}body{font-family:Vazirmatn,system-ui,sans-serif;margin:0;background:#f6f8fa;color:#0f172a}[x-cloak]{display:none!important}.glass{background:rgba(255,255,255,.92);backdrop-filter:blur(14px)}.card{background:#fff;border:1px solid #e8edf2;border-radius:22px;box-shadow:0 8px 28px rgba(15,23,42,.05)}.pill{border-radius:999px}.field{width:100%;border:1px solid #d9e2e8;border-radius:14px;padding:.78rem .9rem;background:white;outline:none}.field:focus{border-color:#14b8a6;box-shadow:0 0 0 3px rgba(20,184,166,.12)}.btn{border-radius:14px;padding:.75rem 1rem;font-weight:700}.btn-primary{background:#0f766e;color:#fff}.btn-soft{background:#ecfdf5;color:#0f766e}.nav-active{background:#0f766e;color:white}.mapboxgl-popup-content{font-family:Vazirmatn!important;border-radius:14px!important}.safe-bottom{padding-bottom:max(1rem,env(safe-area-inset-bottom))}
 </style>
 </head>
-
-<body class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()" x-cloak>
-
-<!-- LOGIN -->
+<body x-data="app()" x-init="init()" x-cloak>
 <template x-if="!token">
-  <div class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-teal-500 to-teal-700">
-    <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md">
-
-      <div class="text-center mb-6">
-        <div class="w-16 h-16 bg-teal-500 rounded-2xl flex items-center justify-center mb-3 mx-auto">
-          <span class="text-3xl">💎</span>
-        </div>
-        <h1 class="text-2xl font-bold">Aqua Gold</h1>
-        <p class="text-sm text-gray-500">سیستم مدیریت خدمات</p>
-      </div>
-
-      <form @submit.prevent="login()" class="space-y-4">
-        <input x-model="form.username" class="w-full border rounded-xl px-4 py-3" placeholder="نام کاربری">
-        <input x-model="form.password" type="password" class="w-full border rounded-xl px-4 py-3" placeholder="رمز عبور">
-
-        <div x-show="error" class="text-red-500 text-sm" x-text="error"></div>
-
-        <button class="w-full bg-teal-500 text-white py-3 rounded-xl" :disabled="loading">
-          <span x-show="!loading">ورود</span>
-          <span x-show="loading">...</span>
-        </button>
+  <main class="min-h-screen flex items-center justify-center p-5 bg-gradient-to-br from-teal-800 via-teal-700 to-cyan-700">
+    <section class="glass w-full max-w-md rounded-[28px] p-7 shadow-2xl">
+      <div class="w-16 h-16 rounded-2xl bg-teal-700 text-white grid place-items-center text-3xl mb-4">💧</div>
+      <h1 class="text-3xl font-black">AquaGold</h1><p class="text-slate-500 mt-1">CRM هوشمند خدمات تصفیه آب</p>
+      <form @submit.prevent="login" class="space-y-3 mt-7">
+        <input x-model="loginForm.username" class="field" placeholder="نام کاربری" autocomplete="username">
+        <input x-model="loginForm.password" type="password" class="field" placeholder="رمز عبور" autocomplete="current-password">
+        <p x-show="error" x-text="error" class="text-red-600 text-sm"></p>
+        <button class="btn btn-primary w-full" :disabled="busy" x-text="busy?'در حال ورود…':'ورود به پنل'"></button>
       </form>
-
-    </div>
-  </div>
+    </section>
+  </main>
 </template>
 
-<!-- APP -->
 <template x-if="token">
-<div>
-
-<header class="bg-white border-b px-6 py-4 flex justify-between">
-  <div class="font-bold">Aqua Gold</div>
-
-  <div class="flex gap-3 items-center">
-    <span x-text="safeUserName()"></span>
-    <button @click="logout()" class="text-red-500">خروج</button>
+<div class="min-h-screen">
+<header class="sticky top-0 z-40 glass border-b border-slate-200/70 px-4 md:px-7 py-3">
+  <div class="max-w-7xl mx-auto flex items-center justify-between gap-3">
+    <div><div class="font-black text-xl">AquaGold</div><div class="text-xs text-slate-500">CRM هوشمند خدمات</div></div>
+    <div class="flex items-center gap-2"><span class="hidden sm:block text-sm text-slate-600" x-text="userName"></span><button @click="logout" class="btn bg-red-50 text-red-600 !py-2">خروج</button></div>
   </div>
 </header>
 
-<!-- NAVIGATION -->
-<nav class="bg-white border-b px-6 py-3 flex gap-4 overflow-x-auto">
-  <button @click="page='dashboard'" 
-          :class="page==='dashboard' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
-          class="pb-2 font-medium whitespace-nowrap">داشبورد</button>
-  <button @click="page='jobs'; loadJobs()" 
-          :class="page==='jobs' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
-          class="pb-2 font-medium whitespace-nowrap">سرویس‌ها</button>
-  <button @click="page='customers'; loadCustomers()" 
-          :class="page==='customers' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
-          class="pb-2 font-medium whitespace-nowrap">مشتریان</button>
-  <button @click="page='inventory'; loadInventory()" 
-          :class="page==='inventory' ? 'text-teal-600 border-b-2 border-teal-600' : 'text-gray-500'"
-          class="pb-2 font-medium whitespace-nowrap">انبار</button>
+<nav class="sticky top-[65px] z-30 glass border-b border-slate-200/70 px-3 py-2 overflow-x-auto">
+  <div class="max-w-7xl mx-auto flex gap-2 min-w-max">
+    <template x-for="n in navs" :key="n.id"><button @click="go(n.id)" class="btn !py-2.5 !px-4" :class="page===n.id?'nav-active':'bg-white text-slate-600 border border-slate-200'"><span x-text="n.icon"></span> <span x-text="n.label"></span></button></template>
+  </div>
 </nav>
 
-<main class="p-6">
-
-  <!-- DASHBOARD -->
-  <div x-show="page==='dashboard'">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-
-      <div class="bg-white p-4 rounded-xl">
-        <div class="text-xs text-gray-500">درآمد امروز</div>
-        <div class="text-xl font-bold" x-text="fmt(stats?.today?.total)"></div>
-      </div>
-
-      <div class="bg-white p-4 rounded-xl">
-        <div class="text-xs text-gray-500">سرویس امروز</div>
-        <div class="text-xl font-bold" x-text="stats?.today?.count ?? 0"></div>
-      </div>
-
-      <div class="bg-white p-4 rounded-xl">
-        <div class="text-xs text-gray-500">مشتریان</div>
-        <div class="text-xl font-bold" x-text="stats?.total_customers ?? 0"></div>
-      </div>
-
-      <div class="bg-white p-4 rounded-xl">
-        <div class="text-xs text-gray-500">انبار</div>
-        <div class="text-xl font-bold" x-text="safeStock()"></div>
-      </div>
-
-    </div>
-
-    <!-- RECENT -->
-    <div class="bg-white mt-6 p-4 rounded-xl">
-      <h2 class="font-bold mb-3">آخرین سرویس‌ها</h2>
-
-      <template x-if="recentJobs.length">
-        <template x-for="j in recentJobs" :key="j.id">
-          <div class="flex justify-between border-b py-2">
-            <div>
-              <div x-text="j.name"></div>
-              <div class="text-xs text-gray-400" x-text="j.date"></div>
-            </div>
-            <div x-text="fmt(j.amount)"></div>
-          </div>
-        </template>
-      </template>
-
-      <template x-if="!recentJobs.length">
-        <div class="text-center text-gray-400 py-4">سرویسی ثبت نشده</div>
-      </template>
-    </div>
+<main class="max-w-7xl mx-auto p-4 md:p-7 safe-bottom">
+<section x-show="page==='dashboard'" class="space-y-5">
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div class="card p-4"><div class="text-sm text-slate-500">درآمد امروز</div><div class="text-2xl font-black mt-1" x-text="money(stats.today?.total)"></div><div class="text-xs text-slate-400">تومان</div></div>
+    <div class="card p-4"><div class="text-sm text-slate-500">سرویس امروز</div><div class="text-2xl font-black mt-1" x-text="stats.today?.count||0"></div></div>
+    <div class="card p-4"><div class="text-sm text-slate-500">کل مشتری‌ها</div><div class="text-2xl font-black mt-1" x-text="stats.total_customers||0"></div></div>
+    <div class="card p-4"><div class="text-sm text-slate-500">موقعیت فعلی</div><div class="text-sm font-bold mt-2" x-text="gpsLabel"></div><button @click="locate" class="text-teal-700 text-xs mt-2">به‌روزرسانی GPS</button></div>
   </div>
-
-  <!-- JOBS PAGE -->
-  <div x-show="page==='jobs'">
-    <div class="bg-white p-4 rounded-xl">
-      <h2 class="font-bold mb-3">همه سرویس‌ها</h2>
-      
-      <div x-show="loadingJobs" class="text-center py-4 text-gray-500">در حال بارگذاری...</div>
-      
-      <template x-if="!loadingJobs && jobs.length">
-        <div class="space-y-2">
-          <template x-for="j in jobs" :key="j.id">
-            <div class="flex justify-between border-b py-3">
-              <div>
-                <div class="font-medium" x-text="j.name || 'بدون نام'"></div>
-                <div class="text-xs text-gray-500" x-text="j.phone"></div>
-                <div class="text-xs text-gray-400" x-text="j.date"></div>
-                <div class="text-xs text-gray-400" x-text="j.address"></div>
-              </div>
-              <div class="text-left">
-                <div class="font-bold" x-text="fmt(j.amount)"></div>
-                <div class="text-xs px-2 py-1 rounded mt-1" 
-                     :class="{
-                       'bg-green-100 text-green-700': j.status === 'completed',
-                       'bg-yellow-100 text-yellow-700': j.status === 'pending' || j.status === 'scheduled',
-                       'bg-blue-100 text-blue-700': j.status === 'in_progress',
-                       'bg-gray-100 text-gray-700': j.status === 'registered'
-                     }"
-                     x-text="statusLabel(j.status)"></div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </template>
-
-      <template x-if="!loadingJobs && !jobs.length && !jobsError">
-        <div class="text-center text-gray-400 py-8">هیچ سرویسی ثبت نشده است</div>
-      </template>
-
-      <div x-show="jobsError" class="text-red-500 text-center py-4" x-text="jobsError"></div>
+  <div class="grid lg:grid-cols-3 gap-4">
+    <div class="card p-5 lg:col-span-2"><div class="flex justify-between items-center mb-3"><h2 class="font-black text-lg">آخرین سرویس‌ها</h2><button @click="go('services')" class="text-teal-700 text-sm">همه سرویس‌ها</button></div>
+      <div class="space-y-2"><template x-for="j in jobs.slice(0,8)" :key="j.id"><div class="border border-slate-100 rounded-2xl p-3 flex items-start justify-between gap-3"><div><div class="font-bold" x-text="j.name||'بدون نام'"></div><div class="text-xs text-slate-500 mt-1" x-text="j.description||'سرویس'"></div><div class="text-xs text-slate-400 mt-1" x-text="dateText(j.date)"></div></div><div class="text-left"><div class="font-black" x-text="money(j.amount)"></div><div class="text-xs text-slate-400">تومان</div></div></div></template><div x-show="!jobs.length" class="text-slate-400 text-center py-8">هنوز سرویسی ثبت نشده</div></div>
     </div>
+    <div class="card p-5"><h2 class="font-black text-lg mb-3">دسترسی سریع</h2><div class="grid gap-2"><button @click="go('new-customer')" class="btn btn-primary">＋ ثبت مشتری جدید</button><button @click="go('new-service')" class="btn btn-soft">🧾 ثبت سرویس جدید</button><button @click="go('smart')" class="btn bg-violet-50 text-violet-700">✨ ثبت هوشمند از متن</button><button @click="go('map')" class="btn bg-blue-50 text-blue-700">📍 مشتری‌های اطراف من</button></div></div>
   </div>
+</section>
 
-  <!-- CUSTOMERS PAGE -->
-  <div x-show="page==='customers'">
-    <div class="bg-white p-4 rounded-xl">
-      <h2 class="font-bold mb-3">مشتریان</h2>
-      
-      <div x-show="loadingCustomers" class="text-center py-4 text-gray-500">در حال بارگذاری...</div>
-      
-      <template x-if="!loadingCustomers && customers.length">
-        <div class="space-y-2">
-          <template x-for="c in customers" :key="c.id">
-            <div class="flex justify-between border-b py-3">
-              <div>
-                <div class="font-medium" x-text="c.name"></div>
-                <div class="text-xs text-gray-500" x-text="c.phone"></div>
-                <div class="text-xs text-gray-400" x-text="c.address"></div>
-                <div class="text-xs text-gray-400" x-text="c.device_model"></div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </template>
+<section x-show="page==='customers'" class="space-y-4">
+  <div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between"><div><h2 class="text-2xl font-black">مشتریان</h2><p class="text-sm text-slate-500">جست‌وجو، مشاهده اطلاعات و تاریخچه سرویس</p></div><button @click="go('new-customer')" class="btn btn-primary">＋ مشتری جدید</button></div>
+  <div class="card p-4"><input x-model="customerSearch" class="field" placeholder="جست‌وجوی نام، شماره یا آدرس…"></div>
+  <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-3"><template x-for="c in filteredCustomers" :key="c.id"><button @click="openCustomer(c)" class="card p-4 text-right hover:border-teal-300 transition"><div class="flex justify-between gap-2"><div><div class="font-black text-lg" x-text="c.name||'بدون نام'"></div><div class="text-sm text-slate-500 mt-1" x-text="(c.phones||[]).join(' • ')||'بدون شماره'"></div></div><span x-show="c.latitude" class="text-xs bg-emerald-50 text-emerald-700 pill px-2 py-1 h-fit">GPS ✓</span></div><div class="text-sm text-slate-500 mt-3 line-clamp-2" x-text="c.address||'بدون آدرس'"></div></button></template></div>
+</section>
 
-      <template x-if="!loadingCustomers && !customers.length && !customersError">
-        <div class="text-center text-gray-400 py-8">هیچ مشتری‌ای ثبت نشده است</div>
-      </template>
+<section x-show="page==='new-customer'" class="max-w-3xl mx-auto"><div class="card p-5 md:p-7"><div class="flex justify-between"><div><h2 class="text-2xl font-black">ثبت مشتری جدید</h2><p class="text-sm text-slate-500">اطلاعات پایه و موقعیت دقیق مشتری</p></div><button @click="go('customers')" class="text-slate-500">✕</button></div><form @submit.prevent="createCustomer" class="grid md:grid-cols-2 gap-3 mt-6">
+  <input x-model="customerForm.first_name" class="field" placeholder="نام"><input x-model="customerForm.last_name" class="field" placeholder="نام خانوادگی *" required>
+  <input x-model="customerForm.phone" class="field" placeholder="شماره تماس اصلی"><input x-model="customerForm.phone2" class="field" placeholder="شماره تماس دوم">
+  <textarea x-model="customerForm.address" class="field md:col-span-2 min-h-24" placeholder="آدرس کامل"></textarea><input x-model="customerForm.device_model" class="field" placeholder="مدل دستگاه / نوع تصفیه"><input x-model="customerForm.notes" class="field" placeholder="یادداشت">
+  <div class="md:col-span-2 bg-slate-50 rounded-2xl p-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between"><div><div class="font-bold">موقعیت مشتری</div><div class="text-xs text-slate-500" x-text="newCustomerGpsLabel"></div></div><button type="button" @click="captureCustomerGps" class="btn btn-soft">📍 ثبت GPS فعلی</button></div>
+  <button class="btn btn-primary md:col-span-2" :disabled="busy" x-text="busy?'در حال ثبت…':'ثبت مشتری'"></button></form></div></section>
 
-      <div x-show="customersError" class="text-red-500 text-center py-4" x-text="customersError"></div>
-    </div>
-  </div>
+<section x-show="page==='services'" class="space-y-4"><div class="flex flex-col md:flex-row gap-3 md:items-center md:justify-between"><div><h2 class="text-2xl font-black">سرویس‌ها</h2><p class="text-sm text-slate-500">تاریخچه کامل خدمات و دریافتی‌ها</p></div><button @click="go('new-service')" class="btn btn-primary">＋ سرویس جدید</button></div><div class="card p-4"><input x-model="serviceSearch" class="field" placeholder="جست‌وجوی مشتری، تلفن، آدرس یا شرح سرویس…"></div><div class="space-y-3"><template x-for="j in filteredJobs" :key="j.id"><div class="card p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"><div><div class="font-black" x-text="j.name||'بدون نام'"></div><div class="text-sm text-slate-600 mt-1" x-text="j.description||'سرویس'"></div><div class="text-xs text-slate-400 mt-1" x-text="[j.phone,j.address,dateText(j.date)].filter(Boolean).join(' • ')"></div></div><div><div class="font-black text-lg" x-text="money(j.amount)+' تومان'"></div><div class="text-xs text-slate-500" x-text="statusLabel(j.status)"></div></div></div></template><div x-show="!jobs.length" class="card p-10 text-center text-slate-400">هنوز سرویسی ثبت نشده</div></div></section>
 
-  <!-- INVENTORY PAGE -->
-  <div x-show="page==='inventory'">
-    <div class="bg-white p-4 rounded-xl">
-      <h2 class="font-bold mb-3">انبار</h2>
-      
-      <div x-show="loadingInventory" class="text-center py-4 text-gray-500">در حال بارگذاری...</div>
-      
-      <template x-if="!loadingInventory && inventory.length">
-        <div class="space-y-2">
-          <template x-for="item in inventory" :key="item.id">
-            <div class="flex justify-between border-b py-3">
-              <div>
-                <div class="font-medium" x-text="item.name"></div>
-                <div class="text-xs text-gray-500" x-text="item.category"></div>
-                <div class="text-xs text-gray-400" x-text="item.unit"></div>
-              </div>
-              <div class="text-left">
-                <div class="font-bold" x-text="item.quantity"></div>
-                <div class="text-xs" 
-                     :class="item.quantity <= item.min_quantity ? 'text-red-500' : 'text-green-500'"
-                     x-text="item.quantity <= item.min_quantity ? 'کمبود موجودی' : 'موجود'"></div>
-              </div>
-            </div>
-          </template>
-        </div>
-      </template>
+<section x-show="page==='new-service'" class="max-w-3xl mx-auto"><div class="card p-5 md:p-7"><div class="flex justify-between"><div><h2 class="text-2xl font-black">ثبت سرویس</h2><p class="text-sm text-slate-500">انتخاب مشتری و ثبت خدمات انجام‌شده</p></div><button @click="go('services')">✕</button></div><form @submit.prevent="createService" class="grid md:grid-cols-2 gap-3 mt-6"><select x-model="serviceForm.customer_id" class="field md:col-span-2" required><option value="">انتخاب مشتری *</option><template x-for="c in customers" :key="c.id"><option :value="c.id" x-text="c.name+' — '+((c.phones||[])[0]||'بدون شماره')"></option></template></select><input x-model="serviceForm.service_type" class="field" placeholder="نوع سرویس (مثلاً تعویض فیلتر)"><input x-model="serviceForm.amount" inputmode="numeric" class="field" placeholder="مبلغ دریافتی"><textarea x-model="serviceForm.description" class="field md:col-span-2 min-h-24" placeholder="شرح کامل کار انجام‌شده"></textarea><select x-model="serviceForm.status" class="field"><option value="registered">ثبت شده</option><option value="completed">تکمیل شده</option><option value="revisit">نیاز به مراجعه</option></select><input x-model="serviceForm.visited_at" type="datetime-local" class="field"><button class="btn btn-primary md:col-span-2" :disabled="busy">ثبت سرویس</button></form></div></section>
 
-      <template x-if="!loadingInventory && !inventory.length && !inventoryError">
-        <div class="text-center text-gray-400 py-8">هیچ کالایی در انبار ثبت نشده است</div>
-      </template>
+<section x-show="page==='smart'" class="space-y-4"><div><h2 class="text-2xl font-black">ثبت هوشمند ✨</h2><p class="text-sm text-slate-500">متن یادداشتت را همان‌طور که در تلگرام/دفتر می‌نویسی وارد کن؛ AquaGold اطلاعات را استخراج می‌کند.</p></div><div class="grid lg:grid-cols-2 gap-4"><div class="card p-5"><textarea x-model="smartText" class="field min-h-64" placeholder="مثال:\nسه شنبه از الان الی ۱۵:۳۰\nفیلتر\nصادقی ۰۹۱۲...\nآریا شهر ...\nمهمانی۳"></textarea><div class="flex gap-2 mt-3"><button @click="analyzeSmart" class="btn bg-violet-600 text-white flex-1">✨ تحلیل متن</button><button @click="captureSmartGps" class="btn btn-soft">📍 GPS</button></div><div class="text-xs text-slate-500 mt-2" x-text="smartGpsLabel"></div></div><div class="card p-5"><h3 class="font-black mb-3">نتیجه استخراج</h3><template x-if="smartParsed"><div class="space-y-2 text-sm"><template x-for="row in smartRows" :key="row[0]"><div class="flex justify-between border-b border-slate-100 py-2 gap-4"><span class="text-slate-500" x-text="row[0]"></span><span class="font-bold text-left" x-text="row[1]||'—'"></span></div></template><button @click="registerSmart" class="btn btn-primary w-full mt-4">ثبت مشتری و سرویس</button></div></template><div x-show="!smartParsed" class="text-slate-400 py-16 text-center">بعد از تحلیل، اطلاعات استخراج‌شده اینجا دیده می‌شود.</div></div></div></section>
 
-      <div x-show="inventoryError" class="text-red-500 text-center py-4" x-text="inventoryError"></div>
-    </div>
-  </div>
+<section x-show="page==='map'" class="space-y-4"><div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3"><div><h2 class="text-2xl font-black">نقشه مشتری‌ها 📍</h2><p class="text-sm text-slate-500">مشتری‌های ثبت‌شده و مشتری‌های نزدیک موقعیت فعلی</p></div><div class="flex gap-2"><button @click="locateAndNearby" class="btn btn-primary">پیدا کردن اطراف من</button><button @click="renderMap" class="btn btn-soft">نمایش همه</button></div></div><div class="card overflow-hidden"><div id="crmMap" style="height:58vh;min-height:420px"></div></div><div x-show="nearby.length" class="grid md:grid-cols-2 xl:grid-cols-3 gap-3"><template x-for="n in nearby" :key="n.id"><div class="card p-4"><div class="flex justify-between"><div class="font-black" x-text="[n.first_name,n.last_name].filter(Boolean).join(' ')"></div><span class="text-xs bg-blue-50 text-blue-700 pill px-2 py-1" x-text="n.distance_m+' متر'"></span></div><div class="text-sm text-slate-500 mt-2" x-text="n.address||''"></div><div class="text-xs text-slate-500 mt-2" x-text="'آخرین سرویس: '+(n.last_service||'—')+' • '+money(n.last_amount||0)+' تومان'"></div></div></template></div></section>
 
+<section x-show="page==='customer-detail' && selectedCustomer" class="max-w-4xl mx-auto space-y-4"><div class="card p-5"><div class="flex justify-between"><div><h2 class="text-2xl font-black" x-text="selectedCustomer?.name"></h2><div class="text-sm text-slate-500 mt-1" x-text="(selectedCustomer?.phones||[]).join(' • ')"></div></div><button @click="go('customers')">✕</button></div><div class="grid md:grid-cols-2 gap-3 mt-5 text-sm"><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">آدرس</div><div class="font-bold mt-1" x-text="selectedCustomer?.address||'—'"></div></div><div class="bg-slate-50 rounded-2xl p-4"><div class="text-slate-500">دستگاه</div><div class="font-bold mt-1" x-text="selectedCustomer?.device_model||'—'"></div></div></div><div class="flex gap-2 mt-4"><button @click="serviceForm.customer_id=selectedCustomer.id;go('new-service')" class="btn btn-primary">＋ ثبت سرویس برای این مشتری</button><button x-show="selectedCustomer?.latitude" @click="focusCustomerOnMap(selectedCustomer)" class="btn btn-soft">📍 روی نقشه</button></div></div><div class="card p-5"><h3 class="font-black text-lg mb-3">تاریخچه سرویس</h3><div class="space-y-2"><template x-for="j in selectedCustomerJobs" :key="j.id"><div class="border-b border-slate-100 py-3 flex justify-between"><div><div class="font-bold" x-text="j.description||'سرویس'"></div><div class="text-xs text-slate-400" x-text="dateText(j.date)"></div></div><div class="font-black" x-text="money(j.amount)+' تومان'"></div></div></template><div x-show="!selectedCustomerJobs.length" class="text-center text-slate-400 py-8">سرویسی برای این مشتری ثبت نشده</div></div></div></section>
 </main>
-
 </div>
 </template>
 
 <script>
-function app(){
-return {
-  token: localStorage.getItem('token'),
-  user: JSON.parse(localStorage.getItem('user')||'null'),
-
-  stats: {
-    today:{total:0,count:0},
-    total_customers:0,
-    low_stock:0,
-    out_of_stock:0
-  },
-
-  recentJobs: [],
-  jobs: [],
-  customers: [],
-  inventory: [],
-
-  form:{username:'',password:''},
-  error:'',
-  loading:false,
-  loadingJobs:false,
-  loadingCustomers:false,
-  loadingInventory:false,
-  jobsError:'',
-  customersError:'',
-  inventoryError:'',
-
-  page:'dashboard',
-
-  safeUserName(){
-    return (this.user?.first_name || '') + ' ' + (this.user?.last_name || '');
-  },
-
-  safeStock(){
-    return (this.stats?.low_stock || 0) + (this.stats?.out_of_stock || 0);
-  },
-
-  statusLabel(status){
-    const labels = {
-      'registered': 'ثبت شده',
-      'pending': 'در انتظار',
-      'scheduled': 'برنامه‌ریزی شده',
-      'in_progress': 'در حال انجام',
-      'completed': 'تکمیل شده',
-      'cancelled': 'لغو شده',
-      'revisit': 'نیاز به مراجعه'
-    };
-    return labels[status] || status;
-  },
-
-  async api(path, opts={}){
-    try{
-      const headers = {'Content-Type':'application/json'};
-
-      if(this.token){
-        headers.Authorization = 'Bearer ' + this.token;
-      }
-
-      const res = await fetch('/api' + path, {...opts, headers});
-
-      let data;
-      try {
-        data = await res.json();
-      } catch(e) {
-        data = {};
-      }
-
-      if(res.status === 401){
-        console.warn('Session expired, logging out');
-        this.logout();
-        return null;
-      }
-
-      if(!res.ok){
-        const errorMsg = data.msg || data.error || 'خطا در ارتباط با سرور';
-        console.error('API Error:', res.status, errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      return data;
-
-    }catch(e){
-      console.error('API ERROR:', path, e);
-      return null;
-    }
-  },
-
-  init(){
-    if(this.token) this.loadDashboard();
-  },
-
-  async login(){
-    this.loading = true;
-    this.error = '';
-
-    const data = await this.api('/login', {
-      method: 'POST',
-      body: JSON.stringify(this.form)
-    });
-
-    if(data && data.token){
-      this.token = data.token;
-      this.user = data.user;
-
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      await this.loadDashboard();
-    } else {
-      this.error = 'نام کاربری یا رمز عبور اشتباه است';
-    }
-
-    this.loading = false;
-  },
-
-  logout(){
-    if(this.token) {
-      fetch('/api/logout', {
-        method: 'POST',
-        headers: {'Authorization': 'Bearer ' + this.token}
-      }).catch(() => {});
-    }
-    
-    localStorage.clear();
-    this.token = null;
-    this.user = null;
-    location.reload();
-  },
-
-  async loadDashboard(){
-    const stats = await this.api('/stats');
-    const jobs = await this.api('/jobs');
-
-    if(stats) {
-      this.stats = stats;
-    }
-    
-    if(jobs && Array.isArray(jobs)) {
-      this.jobs = jobs;
-      this.recentJobs = jobs.slice(0, 8);
-    }
-  },
-
-  async loadJobs(){
-    this.loadingJobs = true;
-    this.jobsError = '';
-    
-    const jobs = await this.api('/jobs');
-    
-    if(jobs && Array.isArray(jobs)) {
-      this.jobs = jobs;
-    } else if(jobs === null) {
-      this.jobsError = 'خطا در بارگذاری سرویس‌ها';
-    }
-    
-    this.loadingJobs = false;
-  },
-
-  async loadCustomers(){
-    this.loadingCustomers = true;
-    this.customersError = '';
-    
-    const customers = await this.api('/customers');
-    
-    if(customers && Array.isArray(customers)) {
-      this.customers = customers;
-    } else if(customers === null) {
-      this.customersError = 'خطا در بارگذاری مشتریان';
-    }
-    
-    this.loadingCustomers = false;
-  },
-
-  async loadInventory(){
-    this.loadingInventory = true;
-    this.inventoryError = '';
-    
-    const inventory = await this.api('/inventory');
-    
-    if(inventory && Array.isArray(inventory)) {
-      this.inventory = inventory;
-    } else if(inventory === null) {
-      this.inventoryError = 'خطا در بارگذاری انبار';
-    }
-    
-    this.loadingInventory = false;
-  },
-
-  fmt(n){
-    return new Intl.NumberFormat('fa-IR').format(n||0);
-  }
-}
-}
+function app(){return{
+token:localStorage.getItem('token'),user:JSON.parse(localStorage.getItem('user')||'null'),page:'dashboard',busy:false,error:'',stats:{today:{count:0,total:0},total_customers:0},jobs:[],customers:[],nearby:[],selectedCustomer:null,customerSearch:'',serviceSearch:'',loginForm:{username:'',password:''},customerForm:{first_name:'',last_name:'',phone:'',phone2:'',address:'',device_model:'',notes:'',latitude:null,longitude:null,location_accuracy_m:null},serviceForm:{customer_id:'',service_type:'',description:'',amount:'',status:'completed',visited_at:''},smartText:'',smartParsed:null,smartGps:{lat:null,lng:null,accuracy:null},gps:{lat:null,lng:null,accuracy:null},map:null,markers:[],navs:[{id:'dashboard',label:'داشبورد',icon:'◫'},{id:'customers',label:'مشتریان',icon:'👥'},{id:'services',label:'سرویس‌ها',icon:'🧾'},{id:'smart',label:'ثبت هوشمند',icon:'✨'},{id:'map',label:'نقشه',icon:'📍'}],
+get userName(){return [this.user?.first_name,this.user?.last_name].filter(Boolean).join(' ')||this.user?.username||''},
+get filteredCustomers(){let q=this.customerSearch.trim().toLowerCase();if(!q)return this.customers;return this.customers.filter(c=>[c.name,(c.phones||[]).join(' '),c.address,c.device_model].join(' ').toLowerCase().includes(q))},
+get filteredJobs(){let q=this.serviceSearch.trim().toLowerCase();if(!q)return this.jobs;return this.jobs.filter(j=>[j.name,j.phone,j.address,j.description].join(' ').toLowerCase().includes(q))},
+get selectedCustomerJobs(){if(!this.selectedCustomer)return[];return this.jobs.filter(j=>String(j.customer_id)===String(this.selectedCustomer.id))},
+get gpsLabel(){return this.gps.lat?`ثبت شده با دقت ${Math.round(this.gps.accuracy||0)} متر`:'ثبت نشده'},get newCustomerGpsLabel(){return this.customerForm.latitude?`عرض ${this.customerForm.latitude.toFixed(5)}، طول ${this.customerForm.longitude.toFixed(5)} — دقت ${Math.round(this.customerForm.location_accuracy_m||0)} متر`:'برای ثبت دقیق محل، دکمه GPS را در محل مشتری بزن.'},get smartGpsLabel(){return this.smartGps.lat?`GPS آماده — دقت ${Math.round(this.smartGps.accuracy||0)} متر`:'برای ثبت موقعیت، GPS را بزن.'},
+get smartRows(){let p=this.smartParsed||{};return[['نام خانوادگی',p.last_name],['شماره‌ها',(p.phones||[]).join(' • ')],['آدرس',p.address],['نوع سرویس',p.service_type],['ویزیتور',p.visitor_code],['زمان',p.time_text],['مبلغ',p.amount?this.money(p.amount)+' تومان':'—']]},
+async api(path,opts={}){let h={'Content-Type':'application/json',...(opts.headers||{})};if(this.token)h.Authorization='Bearer '+this.token;let r=await fetch('/api'+path,{...opts,headers:h});let d={};try{d=await r.json()}catch{}if(r.status===401&&path!='/login'){this.logout();throw Error('نشست منقضی شده')}if(!r.ok)throw Error(d.error||'خطا در ارتباط با سرور');return d},
+async init(){if(this.token){await this.refresh();this.locate(false)}},async refresh(){try{let [s,j,c]=await Promise.all([this.api('/stats'),this.api('/jobs'),this.api('/customers')]);this.stats=s;this.jobs=j||[];this.customers=c||[]}catch(e){this.error=e.message}},
+async login(){this.busy=true;this.error='';try{let d=await this.api('/login',{method:'POST',body:JSON.stringify(this.loginForm)});this.token=d.token;this.user=d.user;localStorage.setItem('token',d.token);localStorage.setItem('user',JSON.stringify(d.user));await this.refresh()}catch(e){this.error='نام کاربری یا رمز عبور نادرست است'}finally{this.busy=false}},logout(){localStorage.clear();this.token=null;this.user=null;location.reload()},
+go(p){this.page=p;if(p==='customers'||p==='services'||p==='dashboard')this.refresh();if(p==='map')setTimeout(()=>this.renderMap(),100)},money(n){return new Intl.NumberFormat('fa-IR').format(Number(n||0))},dateText(v){if(!v)return'';try{return new Intl.DateTimeFormat('fa-IR',{dateStyle:'medium',timeStyle:'short'}).format(new Date(v))}catch{return v}},statusLabel(s){return({registered:'ثبت شده',pending:'در انتظار',scheduled:'برنامه‌ریزی شده',in_progress:'در حال انجام',completed:'تکمیل شده',cancelled:'لغو شده',revisit:'نیاز به مراجعه'})[s]||s},
+locate(show=true){return new Promise((resolve,reject)=>{if(!navigator.geolocation){if(show)alert('GPS در این مرورگر در دسترس نیست');return reject()}navigator.geolocation.getCurrentPosition(p=>{this.gps={lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy};resolve(this.gps)},e=>{if(show)alert('دسترسی موقعیت مکانی داده نشد');reject(e)},{enableHighAccuracy:true,timeout:12000,maximumAge:15000})})},
+async captureCustomerGps(){try{let g=await this.locate();Object.assign(this.customerForm,{latitude:g.lat,longitude:g.lng,location_accuracy_m:g.accuracy})}catch{}},async captureSmartGps(){try{let g=await this.locate();this.smartGps={lat:g.lat,lng:g.lng,accuracy:g.accuracy}}catch{}},
+async createCustomer(){this.busy=true;try{let f=this.customerForm;let phones=[f.phone,f.phone2].filter(Boolean);await this.api('/customers',{method:'POST',body:JSON.stringify({...f,phones})});this.customerForm={first_name:'',last_name:'',phone:'',phone2:'',address:'',device_model:'',notes:'',latitude:null,longitude:null,location_accuracy_m:null};await this.refresh();this.page='customers';alert('مشتری ثبت شد')}catch(e){alert(e.message)}finally{this.busy=false}},
+async createService(){this.busy=true;try{let f={...this.serviceForm,amount:String(this.serviceForm.amount||'').replace(/[,٬،\s]/g,'')};await this.api('/jobs',{method:'POST',body:JSON.stringify(f)});this.serviceForm={customer_id:'',service_type:'',description:'',amount:'',status:'completed',visited_at:''};await this.refresh();this.page='services';alert('سرویس ثبت شد')}catch(e){alert(e.message)}finally{this.busy=false}},
+openCustomer(c){this.selectedCustomer=c;this.page='customer-detail'},
+async analyzeSmart(){if(!this.smartText.trim())return alert('متن را وارد کن');try{this.smartParsed=await this.api('/smart/parse',{method:'POST',body:JSON.stringify({text:this.smartText})})}catch(e){alert(e.message)}},
+async registerSmart(){if(!this.smartParsed)return;try{let g=this.smartGps;let d=await this.api('/smart/register',{method:'POST',body:JSON.stringify({text:this.smartText,parsed:this.smartParsed,latitude:g.lat,longitude:g.lng,accuracy:g.accuracy})});this.smartText='';this.smartParsed=null;await this.refresh();alert('مشتری و سرویس هوشمند ثبت شد');this.openCustomer(this.customers.find(c=>String(c.id)===String(d.customer_id))||this.customers[0])}catch(e){alert(e.message)}},
+renderMap(){let el=document.getElementById('crmMap');if(!el)return;if(!this.map){this.map=new maplibregl.Map({container:'crmMap',style:{version:8,sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap'}},layers:[{id:'osm',type:'raster',source:'osm'}]},center:[51.389,35.6892],zoom:10});this.map.addControl(new maplibregl.NavigationControl(),'top-left')}this.markers.forEach(m=>m.remove());this.markers=[];let pts=[];this.customers.filter(c=>c.latitude&&c.longitude).forEach(c=>{let mk=new maplibregl.Marker().setLngLat([c.longitude,c.latitude]).setPopup(new maplibregl.Popup({offset:20}).setHTML(`<div dir="rtl"><b>${c.name||''}</b><br>${(c.phones||[]).join(' • ')}<br>${c.address||''}</div>`)).addTo(this.map);this.markers.push(mk);pts.push([c.longitude,c.latitude])});if(pts.length){let b=pts.reduce((bb,p)=>bb.extend(p),new maplibregl.LngLatBounds(pts[0],pts[0]));this.map.fitBounds(b,{padding:60,maxZoom:15})}setTimeout(()=>this.map.resize(),80)},
+async locateAndNearby(){try{let g=await this.locate();this.nearby=await this.api(`/customers/nearby?lat=${g.lat}&lng=${g.lng}&radius=250`);this.renderMap();this.map.flyTo({center:[g.lng,g.lat],zoom:16});new maplibregl.Marker({color:'#2563eb'}).setLngLat([g.lng,g.lat]).setPopup(new maplibregl.Popup().setHTML('<div dir="rtl"><b>موقعیت فعلی شما</b></div>')).addTo(this.map)}catch(e){alert(e.message)}},focusCustomerOnMap(c){this.page='map';setTimeout(()=>{this.renderMap();this.map.flyTo({center:[c.longitude,c.latitude],zoom:17})},120)}
+}}
 </script>
-
-</body>
-</html>
-
+</body></html>
