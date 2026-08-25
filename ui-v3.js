@@ -1,1 +1,1 @@
-document.write('<script src="/ui-v3-base.js"><\/script><script src="/ui-v4-enhancements.js"><\/script><script src="/ui-v4-finalize.js"><\/script>');
+document.write('<script src="/ui-v3-base.js"><\/script><script src="/ui-v4-enhancements.js"><\/script><script src="/ui-v4-finalize.js"><\/script><script src="/ui-commerce.js"><\/script>');
