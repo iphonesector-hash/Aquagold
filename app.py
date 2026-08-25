@@ -1,3 +1,4 @@
+import os
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -39,6 +40,20 @@ def _smart_parse_ai():
 
 app.view_functions["smart_parse"] = _smart_parse_ai
 
+# Safe runtime diagnostic: exposes only whether Groq is configured, never the key itself.
+_original_health = app.view_functions["health"]
+
+
+def _health_with_ai_status():
+    response = app.make_response(_original_health())
+    if response.is_json:
+        payload = response.get_json() or {}
+        payload["ai"] = "configured" if os.getenv("GROQ_API_KEY") else "not_configured"
+        return jsonify(payload), response.status_code
+    return response
+
+
+app.view_functions["health"] = _health_with_ai_status
+
 if __name__ == "__main__":
-    import os
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)
