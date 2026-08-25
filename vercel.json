@@ -1,5 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "ALLOWED_ORIGINS": "https://aquagold-db.vercel.app,https://aquagold-db-i-sector.vercel.app,https://aquagold-db-git-feature-aquagold-smart-crm-map-i-sector.vercel.app"
+  },
   "functions": {
     "app.py": {
       "maxDuration": 60,
