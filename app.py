@@ -25,9 +25,10 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
-# Registers v3 extras and PostgreSQL 18 compatibility fixes.
+# Registers v3/v4 extensions and PostgreSQL 18 compatibility fixes.
 import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
+import app_commerce  # noqa: E402,F401
 
 
 @app_v3.token_required
