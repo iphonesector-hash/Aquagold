@@ -21,7 +21,26 @@ jobs:
       - name: Python syntax
         run: python -m py_compile app.py app_v3.py app_extras.py ai_intake.py smart_intake.py
       - name: Smart intake tests
+        env:
+          PYTHONPATH: .
         run: pytest -q tests/test_smart_intake.py
+      - name: Import application and verify v3 routes
+        env:
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          from app import app
+          rules = {rule.rule for rule in app.url_map.iter_rules()}
+          required = {
+              '/health', '/api/customers', '/api/jobs', '/api/expenses',
+              '/api/settlements', '/api/reports/daily', '/api/reports/analytics',
+              '/api/reports/insights', '/api/route/nearest', '/api/audit',
+              '/api/export.xlsx', '/api/smart/parse', '/api/smart/register',
+          }
+          missing = required - rules
+          assert not missing, f'missing routes: {sorted(missing)}'
+          print(f'Loaded {len(rules)} Flask routes successfully')
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
