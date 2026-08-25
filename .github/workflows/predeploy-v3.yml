@@ -1,0 +1,46 @@
+name: AquaGold v3 predeploy
+
+on:
+  push:
+    branches:
+      - feature/aquagold-finance-map-v3
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Python syntax
+        run: python -m py_compile app.py smart_intake.py
+      - name: Smart intake tests
+        run: pytest -q tests/test_smart_intake.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check inline app JavaScript syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text(encoding='utf-8')
+          scripts = re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>', html, re.S | re.I)
+          inline = [s for s in scripts if s.strip() and 'function app()' in s]
+          assert inline, 'inline AquaGold app script not found'
+          Path('/tmp/aquagold-inline.js').write_text(inline[-1], encoding='utf-8')
+          PY
+          node --check /tmp/aquagold-inline.js
+      - name: Verify v3 UI capabilities are present
+        run: |
+          grep -q "گزارش روزانه شمسی" index.html
+          grep -q "نقشه زنده مشتری‌ها" index.html
+          grep -q "تحلیل مالی و سود و زیان" index.html
+          grep -q "ثبت هوشمند" index.html
+          ! grep -q ">انبار<" index.html
