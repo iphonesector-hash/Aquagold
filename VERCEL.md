@@ -3,9 +3,9 @@
 AquaGold production architecture is Vercel + a dedicated Neon Postgres/PostGIS database.
 
 Deployment expectations:
-- Production uses the Neon main branch.
-- Preview deployments use the connected Neon preview/database branch integration when available.
+- Production uses the Neon main branch database.
+- Preview deployments use isolated preview/database branches when available.
 - The browser never receives the database connection string; all database access stays in the Flask/Vercel backend.
 - `app.py` is the production Flask entrypoint and `vercel.json` contains the Vercel function configuration.
 
-This update intentionally triggers the first Git-integrated Vercel preview for the smart CRM branch.
+Preview verification completed successfully. This post-merge branch update is only to trigger the currently configured Vercel production branch so the public alias can move to the verified build.
