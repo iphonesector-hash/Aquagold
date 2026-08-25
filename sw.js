@@ -1,31 +1,35 @@
-const CACHE = 'aquagold-v2';
-const ASSETS = ['/', '/index.html', '/manifest.json', '/icon.svg'];
+const CACHE = 'aquagold-v3-20260825';
+const STATIC_ASSETS = ['/manifest.json', '/icon.svg'];
 
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => {}))
-  );
+self.addEventListener('install', event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(STATIC_ASSETS).catch(() => {})));
   self.skipWaiting();
 });
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-    )
-  );
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))));
   self.clients.claim();
 });
 
-self.addEventListener('fetch', e => {
-  if (e.request.url.includes('/api/')) return;
-  e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).then(res => {
-      if (res && res.status === 200 && res.type === 'basic') {
-        const cl = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, cl));
-      }
-      return res;
-    }).catch(() => caches.match('/index.html')))
-  );
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET' || request.url.includes('/api/')) return;
+
+  // Always prefer the network for app navigation so iPhone/Safari cannot stay on an old CRM shell.
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    event.respondWith(fetch(request).then(response => {
+      const copy = response.clone();
+      caches.open(CACHE).then(cache => cache.put('/index.html', copy));
+      return response;
+    }).catch(() => caches.match('/index.html')));
+    return;
+  }
+
+  event.respondWith(caches.match(request).then(cached => cached || fetch(request).then(response => {
+    if (response && response.status === 200 && response.type === 'basic') {
+      const copy = response.clone();
+      caches.open(CACHE).then(cache => cache.put(request, copy));
+    }
+    return response;
+  })));
 });
