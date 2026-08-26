@@ -5,6 +5,8 @@ from uuid import UUID
 
 from flask import jsonify, request
 
+# Ensure production can start even when Vercel has no explicit session secret yet.
+import aquagold_secret_bootstrap  # noqa: E402,F401
 import app_v3
 from aquagold_validation import text as valid_text
 from ai_intake import parse_with_ai
