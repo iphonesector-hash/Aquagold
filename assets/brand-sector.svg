@@ -1,9 +1,28 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Sector AquaGold logo">
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#06b6d4"/><stop offset="1" stop-color="#14b8a6"/></linearGradient><filter id="s"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-opacity=".18"/></filter></defs>
-<rect width="512" height="512" rx="128" fill="#071827"/>
-<circle cx="256" cy="256" r="158" fill="none" stroke="url(#g)" stroke-width="18" stroke-dasharray="720 280" stroke-linecap="round" filter="url(#s)"/>
-<path d="M258 112c-44 66-93 119-93 190 0 55 41 98 93 98s93-43 93-98c0-71-49-124-93-190Z" fill="url(#g)"/>
-<path d="M221 308c14 28 39 43 71 39" fill="none" stroke="#dffcff" stroke-width="15" stroke-linecap="round" opacity=".9"/>
-<path d="M127 174c28-37 64-66 107-85" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round" opacity=".28"/>
-<text x="256" y="474" font-family="Arial,sans-serif" font-size="38" font-weight="700" text-anchor="middle" fill="#e6fbff" letter-spacing="7">SECTOR</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="AquaGold Sector">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="70%"><stop stop-color="#0a4d91"/><stop offset=".42" stop-color="#031d43"/><stop offset="1" stop-color="#010817"/></radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7fdff"/><stop offset=".18" stop-color="#6fbde9"/><stop offset=".42" stop-color="#d8f4ff"/><stop offset=".68" stop-color="#2b6fa5"/><stop offset="1" stop-color="#bdeaff"/></linearGradient>
+    <linearGradient id="water" x1=".2" y1="0" x2=".8" y2="1"><stop stop-color="#d9fbff"/><stop offset=".2" stop-color="#37e2ff"/><stop offset=".5" stop-color="#087fe8"/><stop offset=".78" stop-color="#0751a7"/><stop offset="1" stop-color="#021d55"/></linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="9" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#00091c" flood-opacity=".7"/></filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+  <circle cx="256" cy="231" r="174" fill="none" stroke="#1c88d1" stroke-width="26" opacity=".24" filter="url(#glow)"/>
+  <circle cx="256" cy="231" r="169" fill="none" stroke="url(#metal)" stroke-width="10" opacity=".95"/>
+  <circle cx="256" cy="231" r="147" fill="#02122c" stroke="#118fdc" stroke-width="4"/>
+  <path d="M256 66c-43 74-99 129-99 207 0 64 44 112 99 112s99-48 99-112c0-78-56-133-99-207Z" fill="#063a7e" stroke="url(#metal)" stroke-width="7" filter="url(#shadow)"/>
+  <path d="M256 82c-34 66-76 113-76 177 0 51 34 91 76 91s76-40 76-91c0-64-42-111-76-177Z" fill="url(#water)" filter="url(#glow)"/>
+  <path d="M218 246c39 24 70 11 105-22-9 67-36 103-73 103-31 0-55-25-62-58 12 5 19 2 30-23Z" fill="#021a52" opacity=".86"/>
+  <path d="M197 268c42 20 78 6 116-32-15 56-44 87-78 83-24-3-39-21-45-43" fill="none" stroke="#9df4ff" stroke-width="10" stroke-linecap="round" opacity=".88"/>
+  <path d="M225 116c-25 43-38 80-38 113" fill="none" stroke="#fff" stroke-width="11" stroke-linecap="round" opacity=".58"/>
+  <g fill="none" stroke="url(#metal)" stroke-width="8" stroke-linecap="round">
+    <path d="M76 309c54-48 98-47 145-7"/><path d="M436 309c-54-48-98-47-145-7"/><path d="M88 333c48-34 88-31 129 2"/><path d="M424 333c-48-34-88-31-129 2"/>
+  </g>
+  <path d="M72 329h368l-22 83H94Z" fill="#01091c" stroke="url(#metal)" stroke-width="7" filter="url(#shadow)"/>
+  <path d="M88 341h336" stroke="#167bc2" stroke-width="3" opacity=".8"/>
+  <text x="256" y="385" text-anchor="middle" font-family="Georgia,Times New Roman,serif" font-size="49" font-weight="700" fill="url(#metal)" letter-spacing="3">AQUA GOLD</text>
+  <text x="256" y="407" text-anchor="middle" font-family="Arial,sans-serif" font-size="15" font-weight="700" fill="#53e4ff" letter-spacing="8">SECTOR</text>
+  <path d="m256 421 13 23-13 28-13-28Z" fill="url(#water)" stroke="url(#metal)" stroke-width="4" filter="url(#glow)"/>
+  <circle cx="256" cy="52" r="4" fill="#fff" filter="url(#glow)"/><path d="M256 33v38M237 52h38" stroke="#62e7ff" stroke-width="3" stroke-linecap="round" filter="url(#glow)"/>
+  <path d="M441 191a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM77 221a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM421 242a5 5 0 1 1-10 0 5 5 0 0 1 10 0Z" fill="#86ecff" opacity=".8"/>
 </svg>
