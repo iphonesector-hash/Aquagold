@@ -26,11 +26,12 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
-# Registers v3/v4 extensions and PostgreSQL 18 compatibility fixes.
+# Registers v3/v4/v6 extensions, Farangis bridge and PostgreSQL 18 compatibility fixes.
 import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
 import app_commerce  # noqa: E402,F401
 import app_routing  # noqa: E402,F401
+import farangis_bridge  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
@@ -50,6 +51,7 @@ def _health_with_ai_status():
     if response.is_json:
         payload = response.get_json() or {}
         payload["ai"] = "configured" if os.getenv("GROQ_API_KEY") else "not_configured"
+        payload["farangis_bridge"] = "configured" if os.getenv("FARANGIS_INTEGRATION_TOKEN") else "not_configured"
         return jsonify(payload), response.status_code
     return response
 
