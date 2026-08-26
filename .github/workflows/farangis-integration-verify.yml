@@ -1,0 +1,33 @@
+name: AquaGold Farangis Integration QA
+
+on:
+  push:
+    branches: ['farangis-integration']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  verify-bridge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt pytest
+      - name: Syntax check
+        run: python -m py_compile app.py app_v3.py farangis_bridge.py
+      - name: Verify bridge routes load
+        env:
+          PYTHONPATH: .
+          FARANGIS_INTEGRATION_TOKEN: test-token
+        run: |
+          python - <<'PY'
+          from app import app
+          rules = {r.rule for r in app.url_map.iter_rules()}
+          required = {'/api/farangis/customer-payment','/api/farangis/customer-history'}
+          missing = required-rules
+          assert not missing, f'missing Farangis routes: {sorted(missing)}'
+          print('Farangis bridge routes loaded successfully')
+          PY
