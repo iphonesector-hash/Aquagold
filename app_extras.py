@@ -10,7 +10,9 @@ import app_v3
 app = app_v3.app
 get_db = app_v3.get_db
 token_required = app_v3.token_required
+roles_required = app_v3.roles_required
 row_json = lambda row: app_v3.row_json(row)
+from aquagold_validation import coordinates as valid_coordinates, integer as valid_integer
 
 
 @app.get('/api/reports/insights')
@@ -67,11 +69,8 @@ def reports_insights():
 @app.get('/api/route/nearest')
 @token_required
 def route_nearest():
-    try:
-        lat=float(request.args['lat']); lng=float(request.args['lng'])
-    except (KeyError,ValueError):
-        return jsonify({'error':'مختصات معتبر لازم است'}),400
-    limit=max(1,min(int(request.args.get('limit',10)),25))
+    lat, lng = valid_coordinates(request.args.get('lat'), request.args.get('lng'), required=True)
+    limit = valid_integer(request.args.get('limit'), 'تعداد مقصد', minimum=1, maximum=25, default=10)
     with get_db() as db, db.cursor() as cur:
         cur.execute("""
           select c.id,trim(concat_ws(' ',c.first_name,c.last_name)) name,c.map_label,c.address,
@@ -87,9 +86,9 @@ def route_nearest():
 
 
 @app.get('/api/audit')
-@token_required
+@roles_required('admin')
 def audit_list():
-    limit=max(1,min(int(request.args.get('limit',100)),500))
+    limit = valid_integer(request.args.get('limit'), 'تعداد رویداد', minimum=1, maximum=500, default=100)
     with get_db() as db, db.cursor() as cur:
         cur.execute("select * from audit_log order by created_at desc limit %s",(limit,))
         rows=cur.fetchall()
@@ -110,8 +109,18 @@ def _sheet_header(ws, headers):
     ws.sheet_view.rightToLeft=True
 
 
+def _excel_value(value):
+    if isinstance(value, str) and value.lstrip().startswith(('=', '+', '-', '@')):
+        return "'" + value
+    return value
+
+
+def _append_safe(ws, values):
+    ws.append([_excel_value(value) for value in values])
+
+
 @app.get('/api/export.xlsx')
-@token_required
+@roles_required('admin')
 def export_xlsx():
     wb=Workbook()
     ws=wb.active; ws.title='سرویس‌ها'
@@ -124,7 +133,7 @@ def export_xlsx():
           from service_visits v join customers_v2 c on c.id=v.customer_id order by visit_date desc
         """)
         for r in cur.fetchall():
-            ws.append([r['visit_date'],r['name'],r['phone'],r['service_type'],r['description'],r['invoice_amount'],r['received_amount'],r['company_share_amount'],r['customer_balance'],r['payment_method']])
+            _append_safe(ws,[r['visit_date'],r['name'],r['phone'],r['service_type'],r['description'],r['invoice_amount'],r['received_amount'],r['company_share_amount'],r['customer_balance'],r['payment_method']])
             for idx in (6,7,8,9): _money_cell(ws.cell(ws.max_row,idx))
 
         wc=wb.create_sheet('مشتریان'); _sheet_header(wc,['نام','شماره‌ها','آدرس','نام روی نقشه','پلاک','واحد','مدل دستگاه','Latitude','Longitude'])
@@ -135,17 +144,17 @@ def export_xlsx():
           from customers_v2 c left join customer_phones p on p.customer_id=c.id where c.archived=false group by c.id order by c.created_at desc
         """)
         for r in cur.fetchall():
-            wc.append([' '.join(x for x in [r['first_name'],r['last_name']] if x),' • '.join(r['phones'] or []),r['address'],r['map_label'],r['plaque'],r['unit_no'],r['device_model'],r['latitude'],r['longitude']])
+            _append_safe(wc,[' '.join(x for x in [r['first_name'],r['last_name']] if x),' • '.join(r['phones'] or []),r['address'],r['map_label'],r['plaque'],r['unit_no'],r['device_model'],r['latitude'],r['longitude']])
 
         we=wb.create_sheet('هزینه‌ها'); _sheet_header(we,['تاریخ','دسته','عنوان','مبلغ','توضیحات'])
         cur.execute("select expense_date,category,title,amount,notes from expenses order by expense_date desc")
         for r in cur.fetchall():
-            we.append([r['expense_date'],r['category'],r['title'],r['amount'],r['notes']]); _money_cell(we.cell(we.max_row,4))
+            _append_safe(we,[r['expense_date'],r['category'],r['title'],r['amount'],r['notes']]); _money_cell(we.cell(we.max_row,4))
 
         wf=wb.create_sheet('تسویه شرکت'); _sheet_header(wf,['تاریخ','مبلغ','از دوره','تا دوره','توضیحات'])
         cur.execute("select settled_at,amount,period_from,period_to,notes from company_settlements order by settled_at desc")
         for r in cur.fetchall():
-            wf.append([r['settled_at'],r['amount'],r['period_from'],r['period_to'],r['notes']]); _money_cell(wf.cell(wf.max_row,2))
+            _append_safe(wf,[r['settled_at'],r['amount'],r['period_from'],r['period_to'],r['notes']]); _money_cell(wf.cell(wf.max_row,2))
 
     for sheet in wb.worksheets:
         for col in sheet.columns:

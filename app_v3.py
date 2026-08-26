@@ -1,18 +1,37 @@
+import hashlib
+import hmac
+import logging
 import os
 import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from functools import wraps
+from urllib.parse import urlsplit, urlunsplit
 from uuid import UUID
 
-import jwt
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, make_response, request, send_from_directory
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from aquagold_validation import (
+    ValidationError,
+    boolean as valid_boolean,
+    choice as valid_choice,
+    coordinates as valid_coordinates,
+    decimal_number as valid_decimal,
+    integer as valid_integer,
+    phones as valid_phones,
+    text as valid_text,
+    timestamp as valid_timestamp,
+    uuid as valid_uuid,
+)
 from smart_intake import parse_intake
 
 DIGIT_TRANS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
@@ -29,12 +48,84 @@ def _database_url():
     return None
 
 
-DATABASE_URL = _database_url()
-SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("AQUAGOLD_SECRET_KEY") or "aquagold-local-dev-only"
-TOKEN_EXPIRY_HOURS = 24
+def _pooled_database_url(value):
+    """Prefer Neon's PgBouncer endpoint in bursty serverless runtimes."""
+    if not value or os.getenv("AQUAGOLD_DISABLE_POOLER") == "1":
+        return value
+    parsed = urlsplit(value)
+    host = parsed.hostname or ""
+    if ".neon.tech" not in host or host.split(".", 1)[0].endswith("-pooler"):
+        return value
+    pooled_host = host.replace(".neon.tech", "-pooler.neon.tech", 1)
+    netloc = parsed.netloc.replace(host, pooled_host, 1)
+    return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
+
+
+DATABASE_URL = _pooled_database_url(_database_url())
+APP_ENV = (os.getenv("AQUAGOLD_ENV") or os.getenv("VERCEL_ENV") or "development").lower()
+IS_PRODUCTION = APP_ENV in {"production", "prod"}
+SECRET_KEY = os.getenv("AQUAGOLD_SECRET_KEY") or os.getenv("SECRET_KEY") or ""
+if IS_PRODUCTION and (len(SECRET_KEY) < 32 or SECRET_KEY == "aquagold-local-dev-only"):
+    raise RuntimeError("AQUAGOLD_SECRET_KEY must be a unique value of at least 32 characters in production")
+if not SECRET_KEY:
+    SECRET_KEY = "aquagold-local-dev-only"
+
+SESSION_COOKIE = "aquagold_session"
+CSRF_COOKIE = "aquagold_csrf"
+SESSION_HOURS = max(1, min(int(os.getenv("AQUAGOLD_SESSION_HOURS", "24")), 168))
+COOKIE_SECURE = IS_PRODUCTION or os.getenv("AQUAGOLD_SECURE_COOKIE") == "1"
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+ROLE_LEVELS = {"viewer": 10, "technician": 20, "admin": 30, "superadmin": 40}
+logger = logging.getLogger("aquagold")
+
 app = Flask(__name__, static_folder=".", static_url_path="")
+app.config.update(
+    SECRET_KEY=SECRET_KEY,
+    MAX_CONTENT_LENGTH=int(os.getenv("AQUAGOLD_MAX_REQUEST_BYTES", str(2 * 1024 * 1024))),
+    JSON_SORT_KEYS=False,
+)
 origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "").split(",") if x.strip()]
-CORS(app, origins=origins) if origins else CORS(app)
+if origins:
+    CORS(app, origins=origins, supports_credentials=True, allow_headers=["Content-Type", "X-CSRF-Token", "Idempotency-Key"])
+elif not IS_PRODUCTION:
+    CORS(app, origins=[r"http://localhost:\d+", r"http://127\.0\.0\.1:\d+"], supports_credentials=True)
+
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    storage_uri=os.getenv("RATELIMIT_STORAGE_URI", "memory://"),
+    default_limits=[os.getenv("AQUAGOLD_GLOBAL_RATE_LIMIT", "600 per hour")],
+)
+
+
+@app.errorhandler(ValidationError)
+def validation_error(exc):
+    return jsonify({"error": str(exc)}), 400
+
+
+@app.errorhandler(psycopg.errors.UniqueViolation)
+def unique_violation(_exc):
+    return jsonify({"error": "اطلاعات تکراری است؛ شماره تلفن یا شناسه قبلاً ثبت شده"}), 409
+
+
+@app.errorhandler(413)
+def request_too_large(_exc):
+    return jsonify({"error": "حجم درخواست بیش از حد مجاز است"}), 413
+
+
+@app.errorhandler(HTTPException)
+def http_error(exc):
+    if request.path.startswith("/api/") or request.path == "/health":
+        return jsonify({"error": exc.description or "درخواست نامعتبر است"}), exc.code
+    return exc
+
+
+@app.errorhandler(Exception)
+def unexpected_error(exc):
+    logger.exception("unhandled_request_error: %s", exc)
+    if request.path.startswith("/api/") or request.path == "/health":
+        return jsonify({"error": "خطای داخلی سرویس"}), 500
+    return "Internal Server Error", 500
 
 
 def get_db():
@@ -75,6 +166,23 @@ def as_float(value, default=None):
         return default
 
 
+def pagination_args(*, default_per_page=100, max_per_page=250):
+    page = valid_integer(request.args.get("page"), "صفحه", minimum=1, maximum=1_000_000, default=1)
+    per_page = valid_integer(
+        request.args.get("per_page"), "تعداد هر صفحه", minimum=1,
+        maximum=max_per_page, default=default_per_page,
+    )
+    return page, per_page, (page - 1) * per_page
+
+
+def paginated(items, total, page, per_page):
+    pages = max(1, (total + per_page - 1) // per_page)
+    return jsonify({
+        "items": items,
+        "pagination": {"page": page, "per_page": per_page, "total": total, "pages": pages},
+    })
+
+
 def row_json(row):
     out = {}
     for k, v in dict(row).items():
@@ -86,23 +194,149 @@ def row_json(row):
     return out
 
 
-def create_token(user):
-    now = datetime.now(timezone.utc)
-    return jwt.encode({"user_id": str(user["id"]), "role": user["role"], "iat": now, "exp": now + timedelta(hours=TOKEN_EXPIRY_HOURS)}, SECRET_KEY, algorithm="HS256")
+def _sha256(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def create_session(cur, user):
+    token = secrets.token_urlsafe(48)
+    csrf = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=SESSION_HOURS)
+    cur.execute(
+        """insert into auth_sessions(user_id,token_hash,csrf_hash,expires_at,user_agent,ip_address)
+           values(%s,%s,%s,%s,%s,%s) returning id""",
+        (
+            user["id"], _sha256(token), _sha256(csrf), expires_at,
+            (request.user_agent.string or "")[:500], (request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:100],
+        ),
+    )
+    return token, csrf, expires_at
+
+
+def _request_token():
+    cookie_token = request.cookies.get(SESSION_COOKIE)
+    if cookie_token:
+        return cookie_token, True
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer ") and os.getenv("AQUAGOLD_ALLOW_BEARER_TOKENS") == "1":
+        return auth[7:].strip(), False
+    return None, False
+
+
+def _idempotency_begin(user_id):
+    raw_key = request.headers.get("Idempotency-Key")
+    if not raw_key or request.method in SAFE_METHODS or request.path in {"/api/smart/parse", "/api/route/optimize"}:
+        return None, None
+    key = valid_uuid(raw_key, "کلید تکرارناپذیری")
+    request_hash = _sha256(f"{request.method}:{request.path}:" + request.get_data(cache=True, as_text=True))
+    with get_db() as db, db.cursor() as cur:
+        cur.execute(
+            """insert into api_idempotency(user_id,idempotency_key,request_path,request_hash)
+               values(%s,%s,%s,%s) on conflict do nothing returning idempotency_key""",
+            (user_id, key, request.path, request_hash),
+        )
+        inserted = cur.fetchone()
+        if inserted:
+            return key, None
+        cur.execute(
+            """select request_path,request_hash,status_code,response_body
+               from api_idempotency where user_id=%s and idempotency_key=%s and expires_at>now()""",
+            (user_id, key),
+        )
+        row = cur.fetchone()
+    if not row:
+        raise ValidationError("کلید تکرارناپذیری منقضی شده است")
+    if row["request_path"] != request.path or row["request_hash"] != request_hash:
+        return key, (jsonify({"error": "این کلید برای درخواست متفاوتی استفاده شده است"}), 409)
+    if row["status_code"] is None:
+        return key, (jsonify({"error": "این درخواست در حال پردازش است"}), 409)
+    response = jsonify(row["response_body"] or {})
+    response.status_code = row["status_code"]
+    response.headers["Idempotency-Replayed"] = "true"
+    return key, response
+
+
+def _idempotency_finish(user_id, key, response):
+    if not key:
+        return
+    if response.status_code >= 500:
+        _idempotency_abort(user_id, key)
+        return
+    body = response.get_json(silent=True)
+    with get_db() as db, db.cursor() as cur:
+        cur.execute(
+            """update api_idempotency set status_code=%s,response_body=%s
+               where user_id=%s and idempotency_key=%s""",
+            (response.status_code, Jsonb(body if isinstance(body, (dict, list)) else {}), user_id, key),
+        )
+
+
+def _idempotency_abort(user_id, key):
+    if not key:
+        return
+    with get_db() as db, db.cursor() as cur:
+        cur.execute(
+            "delete from api_idempotency where user_id=%s and idempotency_key=%s and status_code is null",
+            (user_id, key),
+        )
 
 
 def token_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        auth = request.headers.get("Authorization", "")
-        if not auth.startswith("Bearer "):
+        token, via_cookie = _request_token()
+        if not token:
             return jsonify({"error": "Authentication required"}), 401
         try:
-            request.current_user = jwt.decode(auth[7:], SECRET_KEY, algorithms=["HS256"])
-        except jwt.PyJWTError:
+            with get_db() as db, db.cursor() as cur:
+                cur.execute(
+                    """select s.id session_id,s.csrf_hash,s.expires_at,u.id user_id,u.username,u.first_name,u.last_name,u.role
+                       from auth_sessions s join users u on u.id=s.user_id
+                       where s.token_hash=%s and s.revoked_at is null and s.expires_at>now() and u.active=true""",
+                    (_sha256(token),),
+                )
+                session = cur.fetchone()
+        except Exception:
+            logger.exception("session_lookup_failed")
+            return jsonify({"error": "Authentication service unavailable"}), 503
+        if not session:
             return jsonify({"error": "Token is invalid or expired"}), 401
-        return fn(*args, **kwargs)
+        if via_cookie and request.method not in SAFE_METHODS:
+            supplied = request.headers.get("X-CSRF-Token", "")
+            if not supplied or not hmac.compare_digest(_sha256(supplied), session["csrf_hash"]):
+                return jsonify({"error": "CSRF validation failed"}), 403
+        request.current_user = {
+            "user_id": str(session["user_id"]), "username": session["username"],
+            "first_name": session["first_name"], "last_name": session["last_name"],
+            "role": session["role"], "session_id": str(session["session_id"]),
+            "expires_at": session["expires_at"],
+        }
+        idem_key, replay = _idempotency_begin(session["user_id"])
+        if replay is not None:
+            return replay
+        try:
+            response = make_response(fn(*args, **kwargs))
+        except Exception:
+            _idempotency_abort(session["user_id"], idem_key)
+            raise
+        _idempotency_finish(session["user_id"], idem_key, response)
+        return response
     return wrapper
+
+
+def roles_required(*roles):
+    minimum = min(ROLE_LEVELS[role] for role in roles)
+
+    def decorator(fn):
+        @token_required
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            role = request.current_user.get("role", "viewer")
+            if ROLE_LEVELS.get(role, 0) < minimum:
+                return jsonify({"error": "دسترسی کافی ندارید"}), 403
+            return fn(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def audit(cur, entity_type, entity_id, action, before=None, after=None):
@@ -126,6 +360,8 @@ def bootstrap_admin_if_requested():
     username, password = os.getenv("AQUAGOLD_ADMIN_USERNAME"), os.getenv("AQUAGOLD_ADMIN_PASSWORD")
     if not DATABASE_URL or not username or not password:
         return
+    if len(password) < 12:
+        raise RuntimeError("AQUAGOLD_ADMIN_PASSWORD must be at least 12 characters")
     with get_db() as db, db.cursor() as cur:
         cur.execute("select id from users where username=%s", (username,))
         if not cur.fetchone():
@@ -135,7 +371,7 @@ def bootstrap_admin_if_requested():
 try:
     bootstrap_admin_if_requested()
 except Exception:
-    pass
+    logger.exception("bootstrap_admin_failed")
 
 
 @app.get("/")
@@ -151,25 +387,83 @@ def health():
         with get_db() as db, db.cursor() as cur:
             cur.execute("select 1")
             cur.fetchone()
-        return jsonify({"status": "healthy", "database": "neon", "version": "v3"})
-    except Exception as exc:
-        return jsonify({"status": "unhealthy", "error": str(exc)}), 503
+        return jsonify({"status": "healthy", "database": "neon", "version": "v5"})
+    except Exception:
+        logger.exception("health_database_check_failed")
+        return jsonify({"status": "unhealthy", "database": "unavailable"}), 503
 
 
 @app.post("/api/login")
+@limiter.limit(os.getenv("AQUAGOLD_LOGIN_RATE_LIMIT", "5 per minute; 20 per hour"))
 def login():
     data = request.get_json() or {}
-    with get_db() as db, db.cursor() as cur:
-        cur.execute("select * from users where username=%s and active=true", (data.get("username", ""),))
-        user = cur.fetchone()
-    if not user or not check_password_hash(user["password_hash"], data.get("password", "")):
+    username = str(data.get("username") or "").strip()[:100]
+    password = str(data.get("password") or "")
+    if not username or not password or len(password) > 256:
         return jsonify({"error": "Invalid credentials"}), 401
-    return jsonify({"token": create_token(user), "user": {k: user[k] for k in ("id", "username", "first_name", "last_name", "role")}})
+    with get_db() as db, db.cursor() as cur:
+        cur.execute("select * from users where username=%s and active=true", (username,))
+        user = cur.fetchone()
+        if not user or not check_password_hash(user["password_hash"], password):
+            return jsonify({"error": "Invalid credentials"}), 401
+        token, csrf, expires_at = create_session(cur, user)
+    payload = {
+        "csrf_token": csrf,
+        "expires_at": expires_at.isoformat(),
+        "user": {k: user[k] for k in ("id", "username", "first_name", "last_name", "role")},
+    }
+    response = make_response(jsonify(payload))
+    response.set_cookie(
+        SESSION_COOKIE, token, max_age=SESSION_HOURS * 3600, httponly=True,
+        secure=COOKIE_SECURE, samesite="Strict", path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE, csrf, max_age=SESSION_HOURS * 3600, httponly=False,
+        secure=COOKIE_SECURE, samesite="Strict", path="/",
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.get("/api/session")
+@token_required
+def session_status():
+    user = {k: request.current_user.get(k) for k in ("user_id", "username", "first_name", "last_name", "role")}
+    user["id"] = user.pop("user_id")
+    return jsonify({"authenticated": True, "user": user, "expires_at": request.current_user["expires_at"].isoformat()})
 
 
 @app.post("/api/logout")
+@token_required
 def logout():
-    return jsonify({"message": "Logged out"})
+    with get_db() as db, db.cursor() as cur:
+        cur.execute("update auth_sessions set revoked_at=now() where id=%s", (request.current_user["session_id"],))
+    response = make_response(jsonify({"message": "Logged out"}))
+    response.delete_cookie(SESSION_COOKIE, path="/", secure=COOKIE_SECURE, samesite="Strict")
+    response.delete_cookie(CSRF_COOKIE, path="/", secure=COOKIE_SECURE, samesite="Strict")
+    response.headers["Clear-Site-Data"] = '"cache", "storage"'
+    return response
+
+
+@app.after_request
+def security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; "
+        "img-src 'self' data: blob: https:; font-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+        "connect-src 'self' https://tile.openstreetmap.org; worker-src 'self' blob:; manifest-src 'self'",
+    )
+    if request.path.startswith("/api/") or request.path == "/health":
+        response.headers.setdefault("Cache-Control", "no-store")
+    if IS_PRODUCTION:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 
 def customer_payload(row):
@@ -185,52 +479,67 @@ def customer_payload(row):
 @token_required
 def customers_list():
     include_archived = request.args.get("archived") == "1"
+    q = valid_text(request.args.get("q"), "جست‌وجو", max_length=160) or ""
+    page, per_page, offset = pagination_args()
     with get_db() as db, db.cursor() as cur:
+        where = """(%s or c.archived=false) and (%s='' or c.normalized_name ilike '%%'||%s||'%%'
+                   or coalesce(c.address,'') ilike '%%'||%s||'%%' or coalesce(c.map_label,'') ilike '%%'||%s||'%%'
+                   or exists(select 1 from customer_phones px where px.customer_id=c.id and px.phone ilike '%%'||%s||'%%'))"""
+        params = (include_archived, q, q, q, q, q)
+        cur.execute(f"select count(*)::int total from customers_v2 c where {where}", params)
+        total = cur.fetchone()["total"]
         cur.execute("""
             select c.*,case when c.location is null then null else st_y(c.location::geometry) end latitude,
                    case when c.location is null then null else st_x(c.location::geometry) end longitude,
-                   coalesce(array_agg(p.phone order by p.is_primary desc,p.id) filter(where p.phone is not null),'{}') phones
+                   coalesce(array_agg(p.phone order by p.is_primary desc,p.id) filter(where p.phone is not null),'{}') phones,
+                   (select count(*)::int from service_visits vx where vx.customer_id=c.id) service_count,
+                   (select coalesce(sum(vx.received_amount),0)::bigint from service_visits vx where vx.customer_id=c.id) total_received,
+                   (select coalesce(sum(vx.customer_balance),0)::bigint from service_visits vx where vx.customer_id=c.id) total_balance
             from customers_v2 c left join customer_phones p on p.customer_id=c.id
-            where (%s or c.archived=false)
-            group by c.id order by c.created_at desc
-        """, (include_archived,))
+            where """ + where + """
+            group by c.id order by c.created_at desc limit %s offset %s
+        """, params + (per_page, offset))
         rows = cur.fetchall()
-    return jsonify([customer_payload(r) for r in rows])
+    return paginated([customer_payload(r) for r in rows], total, page, per_page)
 
 
 @app.post("/api/customers")
-@token_required
+@roles_required("technician")
 def customer_create():
     data = request.get_json() or {}
-    first = (data.get("first_name") or "").strip() or None
-    last = (data.get("last_name") or data.get("name") or "").strip()
-    if not last:
-        return jsonify({"error": "نام خانوادگی الزامی است"}), 400
-    phones = [normalize_phone(x) for x in data.get("phones", [])]
-    phones = [x for x in dict.fromkeys(phones) if x]
-    lat, lng = as_float(data.get("latitude")), as_float(data.get("longitude"))
+    client_id = valid_uuid(data.get("client_id"), "شناسه آفلاین مشتری", required=False)
+    first = valid_text(data.get("first_name"), "نام", max_length=100)
+    last = valid_text(data.get("last_name") or data.get("name"), "نام خانوادگی", required=True, max_length=160)
+    phones = valid_phones(data.get("phones", []))
+    lat, lng = valid_coordinates(data.get("latitude"), data.get("longitude"))
+    address = valid_text(data.get("address"), "آدرس", max_length=1500)
+    map_label = valid_text(data.get("map_label"), "نام روی نقشه", max_length=160) or f"{first or ''} {last}".strip()
+    unit_no = valid_text(data.get("unit_no"), "واحد", max_length=50)
+    plaque = valid_text(data.get("plaque"), "پلاک", max_length=50)
+    device_model = valid_text(data.get("device_model"), "مدل دستگاه", max_length=200)
+    notes = valid_text(data.get("notes"), "یادداشت", max_length=4000)
     with get_db() as db, db.cursor() as cur:
         if phones:
             cur.execute("select phone,customer_id from customer_phones where phone=any(%s) limit 1", (phones,))
             hit = cur.fetchone()
             if hit:
                 return jsonify({"error": "این شماره قبلاً برای مشتری دیگری ثبت شده", "phone": hit["phone"], "existing_customer_id": str(hit["customer_id"])}), 409
-        common = (first,last,normalize_name(first,last),data.get("address"),data.get("map_label") or f"{first or ''} {last}".strip(),data.get("unit_no"),data.get("plaque"),data.get("device_model"),data.get("notes"),str(request.current_user.get("user_id")))
+        common = (first,last,normalize_name(first,last),address,map_label,unit_no,plaque,device_model,notes,str(request.current_user.get("user_id")))
         if lat is not None and lng is not None:
-            cur.execute("""insert into customers_v2(first_name,last_name,normalized_name,address,map_label,unit_no,plaque,device_model,notes,created_by,location,location_accuracy_m,location_source)
-                           values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s,%s) returning id""", common + (lng,lat,data.get("location_accuracy_m"),data.get("location_source") or "gps"))
+            cur.execute("""insert into customers_v2(id,first_name,last_name,normalized_name,address,map_label,unit_no,plaque,device_model,notes,created_by,location,location_accuracy_m,location_source)
+                           values(coalesce(%s::uuid,gen_random_uuid()),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s,%s) returning id""", (client_id,) + common + (lng,lat,as_float(data.get("location_accuracy_m")),valid_choice(data.get("location_source"),"منبع موقعیت",{"gps","map","drag","manual","geocoded"},default="gps")))
         else:
-            cur.execute("""insert into customers_v2(first_name,last_name,normalized_name,address,map_label,unit_no,plaque,device_model,notes,created_by)
-                           values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id""", common)
+            cur.execute("""insert into customers_v2(id,first_name,last_name,normalized_name,address,map_label,unit_no,plaque,device_model,notes,created_by)
+                           values(coalesce(%s::uuid,gen_random_uuid()),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id""", (client_id,) + common)
         cid = cur.fetchone()["id"]
         for i, phone in enumerate(phones):
             cur.execute("insert into customer_phones(customer_id,phone,is_primary) values(%s,%s,%s)", (cid, phone, i == 0))
-        audit(cur, "customer", cid, "create", after={"name": f"{first or ''} {last}".strip(), "phones": phones, "address": data.get("address")})
+        audit(cur, "customer", cid, "create", after={"name": f"{first or ''} {last}".strip(), "phones": phones, "address": address})
     return jsonify({"id": str(cid), "message": "مشتری ثبت شد"}), 201
 
 
 @app.patch("/api/customers/<uuid:cid>")
-@token_required
+@roles_required("technician")
 def customer_update(cid):
     data = request.get_json() or {}
     with get_db() as db, db.cursor() as cur:
@@ -239,8 +548,7 @@ def customer_update(cid):
         if not before:
             return jsonify({"error": "مشتری پیدا نشد"}), 404
         if "phones" in data:
-            phones = [normalize_phone(x) for x in data.get("phones", [])]
-            phones = [x for x in dict.fromkeys(phones) if x]
+            phones = valid_phones(data.get("phones", []))
             if phones:
                 cur.execute("select phone,customer_id from customer_phones where phone=any(%s) and customer_id<>%s limit 1", (phones, cid))
                 conflict = cur.fetchone()
@@ -248,10 +556,17 @@ def customer_update(cid):
                     return jsonify({"error": "یکی از شماره‌ها متعلق به مشتری دیگری است", "phone": conflict["phone"], "existing_customer_id": str(conflict["customer_id"])}), 409
         else:
             phones = None
-        first = data.get("first_name", before["first_name"])
-        last = data.get("last_name", before["last_name"])
+        first = valid_text(data.get("first_name", before["first_name"]), "نام", max_length=100)
+        last = valid_text(data.get("last_name", before["last_name"]), "نام خانوادگی", required=True, max_length=160)
+        address = valid_text(data.get("address", before["address"]), "آدرس", max_length=1500)
+        map_label = valid_text(data.get("map_label", before["map_label"]), "نام روی نقشه", max_length=160)
+        unit_no = valid_text(data.get("unit_no", before["unit_no"]), "واحد", max_length=50)
+        plaque = valid_text(data.get("plaque", before["plaque"]), "پلاک", max_length=50)
+        device_model = valid_text(data.get("device_model", before["device_model"]), "مدل دستگاه", max_length=200)
+        notes = valid_text(data.get("notes", before["notes"]), "یادداشت", max_length=4000)
+        archived = valid_boolean(data.get("archived"), before["archived"])
         cur.execute("""update customers_v2 set first_name=%s,last_name=%s,normalized_name=%s,address=%s,map_label=%s,unit_no=%s,plaque=%s,device_model=%s,notes=%s,archived=%s,updated_at=now() where id=%s""",
-                    (first,last,normalize_name(first,last),data.get("address",before["address"]),data.get("map_label",before["map_label"]),data.get("unit_no",before["unit_no"]),data.get("plaque",before["plaque"]),data.get("device_model",before["device_model"]),data.get("notes",before["notes"]),bool(data.get("archived",before["archived"])),cid))
+                    (first,last,normalize_name(first,last),address,map_label,unit_no,plaque,device_model,notes,archived,cid))
         if phones is not None:
             cur.execute("delete from customer_phones where customer_id=%s", (cid,))
             for i, phone in enumerate(phones):
@@ -261,19 +576,18 @@ def customer_update(cid):
 
 
 @app.patch("/api/customers/<uuid:cid>/location")
-@token_required
+@roles_required("technician")
 def customer_location(cid):
     data = request.get_json() or {}
-    lat, lng = as_float(data.get("latitude")), as_float(data.get("longitude"))
-    if lat is None or lng is None or not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
-        return jsonify({"error": "مختصات معتبر لازم است"}), 400
+    lat, lng = valid_coordinates(data.get("latitude"), data.get("longitude"), required=True)
+    source = valid_choice(data.get("source"), "منبع موقعیت", {"gps", "map", "drag", "manual", "geocoded"}, default="manual")
     with get_db() as db, db.cursor() as cur:
         cur.execute("select id,case when location is null then null else st_y(location::geometry) end latitude,case when location is null then null else st_x(location::geometry) end longitude from customers_v2 where id=%s", (cid,))
         before = cur.fetchone()
         if not before:
             return jsonify({"error": "مشتری پیدا نشد"}), 404
-        cur.execute("update customers_v2 set location=st_setsrid(st_makepoint(%s,%s),4326)::geography,location_accuracy_m=%s,location_source=%s,updated_at=now() where id=%s", (lng,lat,data.get("accuracy"),data.get("source") or "manual",cid))
-        audit(cur, "customer", cid, "location_update", before={"latitude": before["latitude"], "longitude": before["longitude"]}, after={"latitude": lat, "longitude": lng, "source": data.get("source") or "manual"})
+        cur.execute("update customers_v2 set location=st_setsrid(st_makepoint(%s,%s),4326)::geography,location_accuracy_m=%s,location_source=%s,updated_at=now() where id=%s", (lng,lat,as_float(data.get("accuracy")),source,cid))
+        audit(cur, "customer", cid, "location_update", before={"latitude": before["latitude"], "longitude": before["longitude"]}, after={"latitude": lat, "longitude": lng, "source": source})
     return jsonify({"message": "موقعیت مشتری ذخیره شد", "latitude": lat, "longitude": lng})
 
 
@@ -301,36 +615,71 @@ def customers_suggest():
 @app.get("/api/jobs")
 @token_required
 def jobs_list():
+    q = valid_text(request.args.get("q"), "جست‌وجو", max_length=160) or ""
+    page, per_page, offset = pagination_args()
     with get_db() as db, db.cursor() as cur:
-        cur.execute("""select v.id,v.customer_id,v.service_type,v.description,v.amount,v.invoice_amount,v.received_amount,v.company_share_percent,v.company_share_amount,v.customer_balance,v.payment_method,v.status,v.next_service_at,v.visitor_code,v.created_at,coalesce(v.visited_at,v.created_at) date,c.address,c.device_model,c.map_label,trim(concat_ws(' ',c.first_name,c.last_name)) name,(select phone from customer_phones p where p.customer_id=c.id order by is_primary desc,id limit 1) phone from service_visits v join customers_v2 c on c.id=v.customer_id order by coalesce(v.visited_at,v.created_at) desc""")
+        where = """(%s='' or c.normalized_name ilike '%%'||%s||'%%' or coalesce(c.address,'') ilike '%%'||%s||'%%'
+                    or coalesce(v.description,'') ilike '%%'||%s||'%%' or coalesce(v.service_type,'') ilike '%%'||%s||'%%'
+                    or exists(select 1 from customer_phones px where px.customer_id=c.id and px.phone ilike '%%'||%s||'%%'))"""
+        params = (q, q, q, q, q, q)
+        cur.execute(f"select count(*)::int total from service_visits v join customers_v2 c on c.id=v.customer_id where {where}", params)
+        total = cur.fetchone()["total"]
+        cur.execute("""select v.id,v.customer_id,v.service_type,v.description,v.amount,v.invoice_amount,v.received_amount,v.company_share_percent,v.company_share_amount,v.customer_balance,v.overpayment_amount,v.payment_method,v.status,v.next_service_at,v.visitor_code,v.created_at,coalesce(v.visited_at,v.created_at) date,c.address,c.device_model,c.map_label,trim(concat_ws(' ',c.first_name,c.last_name)) name,(select phone from customer_phones p where p.customer_id=c.id order by is_primary desc,id limit 1) phone from service_visits v join customers_v2 c on c.id=v.customer_id where """ + where + """ order by coalesce(v.visited_at,v.created_at) desc limit %s offset %s""", params + (per_page, offset))
         rows = cur.fetchall()
-    return jsonify([{**row_json(r), "id": str(r["id"]), "customer_id": str(r["customer_id"])} for r in rows])
+    items = [{**row_json(r), "id": str(r["id"]), "customer_id": str(r["customer_id"])} for r in rows]
+    return paginated(items, total, page, per_page)
+
+
+@app.get("/api/customers/<uuid:cid>/jobs")
+@token_required
+def customer_jobs(cid):
+    page, per_page, offset = pagination_args(default_per_page=50, max_per_page=100)
+    with get_db() as db, db.cursor() as cur:
+        cur.execute("select count(*)::int total from service_visits where customer_id=%s", (cid,))
+        total = cur.fetchone()["total"]
+        cur.execute(
+            """select v.*,coalesce(v.visited_at,v.created_at) date
+               from service_visits v where customer_id=%s
+               order by coalesce(v.visited_at,v.created_at) desc limit %s offset %s""",
+            (cid, per_page, offset),
+        )
+        rows = cur.fetchall()
+    return paginated([row_json(row) for row in rows], total, page, per_page)
 
 
 @app.post("/api/jobs")
-@token_required
+@roles_required("technician")
 def job_create():
     data = request.get_json() or {}
-    cid = data.get("customer_id")
-    if not cid:
-        return jsonify({"error": "مشتری الزامی است"}), 400
-    invoice = max(as_int(data.get("invoice_amount", data.get("amount", 0))), 0)
-    received = max(as_int(data.get("received_amount", data.get("amount", invoice))), 0)
+    client_id = valid_uuid(data.get("client_id"), "شناسه آفلاین سرویس", required=False)
+    cid = valid_uuid(data.get("customer_id"), "شناسه مشتری")
+    invoice = valid_integer(data.get("invoice_amount", data.get("amount", 0)), "مبلغ فاکتور", default=0)
+    received = valid_integer(data.get("received_amount", data.get("amount", invoice)), "مبلغ دریافتی", default=invoice)
+    service_type = valid_text(data.get("service_type"), "نوع سرویس", max_length=200)
+    description = valid_text(data.get("description"), "شرح سرویس", max_length=4000)
+    payment_method = valid_choice(data.get("payment_method"), "روش پرداخت", {"cash", "card", "transfer", "cheque", "credit", "other", ""}, default="") or None
+    status = valid_choice(data.get("status"), "وضعیت سرویس", {"scheduled", "registered", "completed", "revisit", "cancelled", "unpaid", "partial"}, default="completed")
+    visited_at = valid_timestamp(data.get("visited_at"), "زمان مراجعه")
+    next_service_at = valid_timestamp(data.get("next_service_at"), "زمان سرویس بعدی")
+    visitor_code = valid_text(data.get("visitor_code"), "کد ویزیتور", max_length=100)
     with get_db() as db, db.cursor() as cur:
-        pct = as_float(data.get("company_share_percent"), finance_percent(cur))
-        pct = max(0, min(100, pct if pct is not None else 50))
-        company = round(received * pct / 100)
+        cur.execute("select 1 from customers_v2 where id=%s and archived=false", (cid,))
+        if not cur.fetchone():
+            return jsonify({"error": "مشتری پیدا نشد یا بایگانی شده است"}), 404
+        pct = valid_decimal(data.get("company_share_percent"), "درصد سهم شرکت", default=finance_percent(cur))
+        company = round(received * float(pct) / 100)
         balance = max(invoice - received, 0)
-        cur.execute("""insert into service_visits(customer_id,registered_by,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,payment_method,status,visited_at,next_service_at,visitor_code)
-                       values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id""",
-                    (cid,str(request.current_user.get("user_id")),data.get("service_type"),data.get("description"),received,invoice,received,pct,company,balance,data.get("payment_method"),data.get("status") or "completed",data.get("visited_at") or None,data.get("next_service_at") or None,data.get("visitor_code")))
+        overpayment = max(received - invoice, 0)
+        cur.execute("""insert into service_visits(id,customer_id,registered_by,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,overpayment_amount,payment_method,status,visited_at,next_service_at,visitor_code)
+                       values(coalesce(%s::uuid,gen_random_uuid()),%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id""",
+                    (client_id,cid,str(request.current_user.get("user_id")),service_type,description,received,invoice,received,pct,company,balance,overpayment,payment_method,status,visited_at,next_service_at,visitor_code))
         jid = cur.fetchone()["id"]
         audit(cur, "service_visit", jid, "create", after={"customer_id": str(cid), "invoice": invoice, "received": received, "company_share": company, "balance": balance})
-    return jsonify({"id": str(jid), "invoice_amount": invoice, "received_amount": received, "company_share_amount": company, "customer_balance": balance}), 201
+    return jsonify({"id": str(jid), "invoice_amount": invoice, "received_amount": received, "company_share_amount": company, "customer_balance": balance, "overpayment_amount": overpayment}), 201
 
 
 @app.patch("/api/jobs/<uuid:jid>")
-@token_required
+@roles_required("technician")
 def job_update(jid):
     data = request.get_json() or {}
     with get_db() as db, db.cursor() as cur:
@@ -338,41 +687,54 @@ def job_update(jid):
         before = cur.fetchone()
         if not before:
             return jsonify({"error": "سرویس پیدا نشد"}), 404
-        invoice = max(as_int(data.get("invoice_amount", before["invoice_amount"])), 0)
-        received = max(as_int(data.get("received_amount", before["received_amount"])), 0)
-        pct = max(0, min(100, as_float(data.get("company_share_percent"), float(before["company_share_percent"]))))
-        company, balance = round(received * pct / 100), max(invoice - received, 0)
-        cur.execute("""update service_visits set service_type=%s,description=%s,invoice_amount=%s,received_amount=%s,amount=%s,company_share_percent=%s,company_share_amount=%s,customer_balance=%s,payment_method=%s,status=%s,visited_at=%s,next_service_at=%s,updated_at=now() where id=%s""",
-                    (data.get("service_type",before["service_type"]),data.get("description",before["description"]),invoice,received,received,pct,company,balance,data.get("payment_method",before["payment_method"]),data.get("status",before["status"]),data.get("visited_at",before["visited_at"]),data.get("next_service_at",before["next_service_at"]),jid))
+        invoice = valid_integer(data.get("invoice_amount", before["invoice_amount"]), "مبلغ فاکتور", default=0)
+        received = valid_integer(data.get("received_amount", before["received_amount"]), "مبلغ دریافتی", default=0)
+        pct = valid_decimal(data.get("company_share_percent", before["company_share_percent"]), "درصد سهم شرکت", default=before["company_share_percent"])
+        company, balance = round(received * float(pct) / 100), max(invoice - received, 0)
+        overpayment = max(received - invoice, 0)
+        service_type = valid_text(data.get("service_type", before["service_type"]), "نوع سرویس", max_length=200)
+        description = valid_text(data.get("description", before["description"]), "شرح سرویس", max_length=4000)
+        payment_method = valid_choice(data.get("payment_method", before["payment_method"]), "روش پرداخت", {"cash", "card", "transfer", "cheque", "credit", "other", ""}, default="") or None
+        status = valid_choice(data.get("status", before["status"]), "وضعیت سرویس", {"scheduled", "registered", "completed", "revisit", "cancelled", "unpaid", "partial"}, default="completed")
+        visited_at = valid_timestamp(data.get("visited_at", before["visited_at"]), "زمان مراجعه")
+        next_service_at = valid_timestamp(data.get("next_service_at", before["next_service_at"]), "زمان سرویس بعدی")
+        cur.execute("""update service_visits set service_type=%s,description=%s,invoice_amount=%s,received_amount=%s,amount=%s,company_share_percent=%s,company_share_amount=%s,customer_balance=%s,overpayment_amount=%s,payment_method=%s,status=%s,visited_at=%s,next_service_at=%s,updated_at=now() where id=%s""",
+                    (service_type,description,invoice,received,received,pct,company,balance,overpayment,payment_method,status,visited_at,next_service_at,jid))
         audit(cur, "service_visit", jid, "update", before={"invoice": before["invoice_amount"], "received": before["received_amount"]}, after=data)
-    return jsonify({"message": "سرویس ویرایش شد", "company_share_amount": company, "customer_balance": balance})
+    return jsonify({"message": "سرویس ویرایش شد", "company_share_amount": company, "customer_balance": balance, "overpayment_amount": overpayment})
 
 
 @app.get("/api/expenses")
 @token_required
 def expenses_list():
+    limit = valid_integer(request.args.get("limit"), "تعداد هزینه", minimum=1, maximum=500, default=300)
     with get_db() as db, db.cursor() as cur:
-        cur.execute("select * from expenses order by expense_date desc,created_at desc")
+        cur.execute("select * from expenses order by expense_date desc,created_at desc limit %s", (limit,))
         rows = cur.fetchall()
     return jsonify([{**row_json(r), "id": str(r["id"])} for r in rows])
 
 
 @app.post("/api/expenses")
-@token_required
+@roles_required("technician")
 def expense_create():
     data = request.get_json() or {}
-    amount = as_int(data.get("amount"))
-    if not data.get("title") or amount < 0:
-        return jsonify({"error": "عنوان و مبلغ معتبر لازم است"}), 400
+    client_id = valid_uuid(data.get("client_id"), "شناسه آفلاین هزینه", required=False)
+    amount = valid_integer(data.get("amount"), "مبلغ هزینه", minimum=1)
+    title = valid_text(data.get("title"), "عنوان هزینه", required=True, max_length=250)
+    category = valid_choice(data.get("category"), "دسته هزینه", {"goods", "fuel", "parking", "tools", "food", "other"}, default="other")
+    expense_date = valid_timestamp(data.get("expense_date"), "تاریخ هزینه")
+    service_visit_id = valid_uuid(data.get("service_visit_id"), "شناسه سرویس", required=False)
+    customer_id = valid_uuid(data.get("customer_id"), "شناسه مشتری", required=False)
+    notes = valid_text(data.get("notes"), "توضیحات", max_length=4000)
     with get_db() as db, db.cursor() as cur:
-        cur.execute("insert into expenses(category,title,amount,expense_date,service_visit_id,customer_id,notes,created_by) values(%s,%s,%s,coalesce(%s::timestamptz,now()),%s,%s,%s,%s) returning id", (data.get("category") or "other",data.get("title"),amount,data.get("expense_date") or None,data.get("service_visit_id") or None,data.get("customer_id") or None,data.get("notes"),str(request.current_user.get("user_id"))))
+        cur.execute("insert into expenses(id,category,title,amount,expense_date,service_visit_id,customer_id,notes,created_by) values(coalesce(%s::uuid,gen_random_uuid()),%s,%s,%s,coalesce(%s,now()),%s,%s,%s,%s) returning id", (client_id,category,title,amount,expense_date,service_visit_id,customer_id,notes,str(request.current_user.get("user_id"))))
         eid = cur.fetchone()["id"]
-        audit(cur, "expense", eid, "create", after={"title": data.get("title"), "amount": amount, "category": data.get("category")})
+        audit(cur, "expense", eid, "create", after={"title": title, "amount": amount, "category": category})
     return jsonify({"id": str(eid), "message": "هزینه ثبت شد"}), 201
 
 
 @app.delete("/api/expenses/<uuid:eid>")
-@token_required
+@roles_required("admin")
 def expense_delete(eid):
     with get_db() as db, db.cursor() as cur:
         cur.execute("delete from expenses where id=%s returning id,title,amount", (eid,))
@@ -386,21 +748,27 @@ def expense_delete(eid):
 @app.get("/api/settlements")
 @token_required
 def settlements_list():
+    limit = valid_integer(request.args.get("limit"), "تعداد تسویه", minimum=1, maximum=500, default=300)
     with get_db() as db, db.cursor() as cur:
-        cur.execute("select * from company_settlements order by settled_at desc")
+        cur.execute("select * from company_settlements order by settled_at desc limit %s", (limit,))
         rows = cur.fetchall()
     return jsonify([{**row_json(r), "id": str(r["id"])} for r in rows])
 
 
 @app.post("/api/settlements")
-@token_required
+@roles_required("admin")
 def settlement_create():
     data = request.get_json() or {}
-    amount = as_int(data.get("amount"))
-    if amount <= 0:
-        return jsonify({"error": "مبلغ تسویه باید بیشتر از صفر باشد"}), 400
+    client_id = valid_uuid(data.get("client_id"), "شناسه آفلاین تسویه", required=False)
+    amount = valid_integer(data.get("amount"), "مبلغ تسویه", minimum=1)
+    settled_at = valid_timestamp(data.get("settled_at"), "تاریخ تسویه")
+    period_from = valid_timestamp(data.get("period_from"), "ابتدای دوره")
+    period_to = valid_timestamp(data.get("period_to"), "انتهای دوره")
+    if period_from and period_to and period_from > period_to:
+        raise ValidationError("ابتدای دوره نمی‌تواند بعد از انتهای دوره باشد")
+    notes = valid_text(data.get("notes"), "توضیحات", max_length=4000)
     with get_db() as db, db.cursor() as cur:
-        cur.execute("insert into company_settlements(amount,settled_at,period_from,period_to,notes,created_by) values(%s,coalesce(%s::timestamptz,now()),%s,%s,%s,%s) returning id", (amount,data.get("settled_at") or None,data.get("period_from") or None,data.get("period_to") or None,data.get("notes"),str(request.current_user.get("user_id"))))
+        cur.execute("insert into company_settlements(id,amount,settled_at,period_from,period_to,notes,created_by) values(coalesce(%s::uuid,gen_random_uuid()),%s,coalesce(%s,now()),%s,%s,%s,%s) returning id", (client_id,amount,settled_at,period_from,period_to,notes,str(request.current_user.get("user_id"))))
         sid = cur.fetchone()["id"]
         audit(cur, "settlement", sid, "create", after={"amount": amount})
     return jsonify({"id": str(sid), "message": "تسویه ثبت شد"}), 201
@@ -414,15 +782,13 @@ def finance_settings_get():
 
 
 @app.patch("/api/settings/finance")
-@token_required
+@roles_required("admin")
 def finance_settings_set():
     data = request.get_json() or {}
-    pct = as_float(data.get("company_share_percent"))
-    if pct is None or not 0 <= pct <= 100:
-        return jsonify({"error": "درصد باید بین صفر تا صد باشد"}), 400
+    pct = valid_decimal(data.get("company_share_percent"), "درصد سهم شرکت")
     with get_db() as db, db.cursor() as cur:
-        cur.execute("insert into app_settings(key,value,updated_at) values('finance',%s,now()) on conflict(key) do update set value=excluded.value,updated_at=now()", (Jsonb({"company_share_percent": pct}),))
-    return jsonify({"company_share_percent": pct})
+        cur.execute("insert into app_settings(key,value,updated_at) values('finance',%s,now()) on conflict(key) do update set value=excluded.value,updated_at=now()", (Jsonb({"company_share_percent": float(pct)}),))
+    return jsonify({"company_share_percent": float(pct)})
 
 
 @app.get("/api/reports/daily")
@@ -504,26 +870,32 @@ def stats():
 @app.post("/api/smart/parse")
 @token_required
 def smart_parse():
-    text = (request.get_json() or {}).get("text", "")
-    if not text.strip():
-        return jsonify({"error": "متن لازم است"}), 400
+    text = valid_text((request.get_json() or {}).get("text"), "متن", required=True, max_length=8000)
     return jsonify(parse_intake(text))
 
 
 @app.post("/api/smart/register")
-@token_required
+@roles_required("technician")
 def smart_register():
     data = request.get_json() or {}
     parsed = data.get("parsed") or parse_intake(data.get("text", ""))
-    last = (parsed.get("last_name") or "").strip()
-    if not last:
-        return jsonify({"error": "نام خانوادگی تشخیص داده نشد"}), 400
-    phones = [normalize_phone(x) for x in parsed.get("phones", [])]
-    phones = [x for x in dict.fromkeys(phones) if x]
-    lat, lng, acc = as_float(data.get("latitude")), as_float(data.get("longitude")), data.get("accuracy")
-    selected = data.get("customer_id")
+    last = valid_text(parsed.get("last_name"), "نام خانوادگی", required=True, max_length=160)
+    phones = valid_phones(parsed.get("phones", []))
+    lat, lng = valid_coordinates(data.get("latitude"), data.get("longitude"))
+    acc = as_float(data.get("accuracy"))
+    selected = valid_uuid(data.get("customer_id"), "شناسه مشتری", required=False)
+    address = valid_text(parsed.get("address"), "آدرس", max_length=1500)
+    service_type = valid_text(parsed.get("service_type"), "نوع سرویس", max_length=200)
+    description = valid_text(data.get("description") or parsed.get("description") or service_type, "شرح سرویس", max_length=4000)
+    visitor_code = valid_text(parsed.get("visitor_code"), "کد ویزیتور", max_length=100)
+    raw_text = valid_text(parsed.get("raw_text") or data.get("text"), "متن خام", max_length=8000)
+    visited_at = valid_timestamp(data.get("visited_at"), "زمان مراجعه")
     with get_db() as db, db.cursor() as cur:
         cid = selected
+        if cid:
+            cur.execute("select 1 from customers_v2 where id=%s and archived=false", (cid,))
+            if not cur.fetchone():
+                return jsonify({"error": "مشتری انتخاب‌شده پیدا نشد"}), 404
         if not cid and phones:
             cur.execute("select distinct customer_id from customer_phones where phone=any(%s)", (phones,))
             matches = [str(r["customer_id"]) for r in cur.fetchall()]
@@ -534,9 +906,9 @@ def smart_register():
         if not cid:
             # Same surname never auto-merges. A new independent customer is created unless exact phone match exists.
             if lat is not None and lng is not None:
-                cur.execute("insert into customers_v2(last_name,normalized_name,address,map_label,location,location_accuracy_m,location_source,created_by) values(%s,%s,%s,%s,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s,'gps',%s) returning id", (last,normalize_name(None,last),parsed.get("address"),last,lng,lat,acc,str(request.current_user.get("user_id"))))
+                cur.execute("insert into customers_v2(last_name,normalized_name,address,map_label,location,location_accuracy_m,location_source,created_by) values(%s,%s,%s,%s,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s,'gps',%s) returning id", (last,normalize_name(None,last),address,last,lng,lat,acc,str(request.current_user.get("user_id"))))
             else:
-                cur.execute("insert into customers_v2(last_name,normalized_name,address,map_label,created_by) values(%s,%s,%s,%s,%s) returning id", (last,normalize_name(None,last),parsed.get("address"),last,str(request.current_user.get("user_id"))))
+                cur.execute("insert into customers_v2(last_name,normalized_name,address,map_label,created_by) values(%s,%s,%s,%s,%s) returning id", (last,normalize_name(None,last),address,last,str(request.current_user.get("user_id"))))
             cid = cur.fetchone()["id"]
         for i, phone in enumerate(phones):
             cur.execute("select customer_id from customer_phones where phone=%s", (phone,))
@@ -545,16 +917,17 @@ def smart_register():
                 cur.execute("insert into customer_phones(customer_id,phone,is_primary) values(%s,%s,%s)", (cid,phone,i == 0))
             elif str(hit["customer_id"]) != str(cid):
                 return jsonify({"error": f"شماره {phone} متعلق به مشتری دیگری است", "needs_selection": True, "existing_customer_id": str(hit["customer_id"])}), 409
-        invoice = max(as_int(data.get("invoice_amount", parsed.get("amount") or 0)), 0)
-        received = max(as_int(data.get("received_amount", parsed.get("amount") or invoice)), 0)
+        invoice = valid_integer(data.get("invoice_amount", parsed.get("amount") or 0), "مبلغ فاکتور", default=0)
+        received = valid_integer(data.get("received_amount", parsed.get("amount") or invoice), "مبلغ دریافتی", default=invoice)
         pct = finance_percent(cur)
         company, balance = round(received * pct / 100), max(invoice - received, 0)
+        overpayment = max(received - invoice, 0)
         if lat is not None and lng is not None:
             visit_sql, loc_params = "st_setsrid(st_makepoint(%s,%s),4326)::geography", [lng, lat]
         else:
             visit_sql, loc_params = "null", []
-        params = [cid,str(request.current_user.get("user_id")),parsed.get("visitor_code"),parsed.get("service_type"),data.get("description") or parsed.get("service_type"),received,invoice,received,pct,company,balance,data.get("visited_at") or None] + loc_params + [parsed.get("raw_text") or data.get("text")]
-        cur.execute(f"insert into service_visits(customer_id,registered_by,visitor_code,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,status,visited_at,visit_location,raw_chat_input) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'registered',%s,{visit_sql},%s) returning id", params)
+        params = [cid,str(request.current_user.get("user_id")),visitor_code,service_type,description,received,invoice,received,pct,company,balance,overpayment,visited_at] + loc_params + [raw_text]
+        cur.execute(f"insert into service_visits(customer_id,registered_by,visitor_code,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,overpayment_amount,status,visited_at,visit_location,raw_chat_input) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'registered',%s,{visit_sql},%s) returning id", params)
         vid = cur.fetchone()["id"]
         audit(cur, "service_visit", vid, "smart_create", after={"customer_id": str(cid), "received": received, "raw_text": data.get("text")})
     return jsonify({"customer_id": str(cid), "visit_id": str(vid), "parsed": parsed}), 201
@@ -563,11 +936,8 @@ def smart_register():
 @app.get("/api/customers/nearby")
 @token_required
 def customers_nearby():
-    try:
-        lat, lng = float(request.args["lat"]), float(request.args["lng"])
-        radius = min(max(float(request.args.get("radius", 250)), 5), 5000)
-    except (KeyError, ValueError):
-        return jsonify({"error": "مختصات معتبر لازم است"}), 400
+    lat, lng = valid_coordinates(request.args.get("lat"), request.args.get("lng"), required=True)
+    radius = float(valid_decimal(request.args.get("radius"), "شعاع", minimum=5, maximum=5000, default=250))
     with get_db() as db, db.cursor() as cur:
         cur.execute("""select c.id,c.first_name,c.last_name,c.map_label,c.address,c.location_accuracy_m,st_y(c.location::geometry) latitude,st_x(c.location::geometry) longitude,round(st_distance(c.location,st_setsrid(st_makepoint(%s,%s),4326)::geography)::numeric,1) distance_m,(select phone from customer_phones p where p.customer_id=c.id order by is_primary desc,id limit 1) phone,(select received_amount from service_visits v where v.customer_id=c.id order by coalesce(v.visited_at,v.created_at) desc limit 1) last_amount,(select service_type from service_visits v where v.customer_id=c.id order by coalesce(v.visited_at,v.created_at) desc limit 1) last_service from customers_v2 c where c.archived=false and c.location is not null and st_dwithin(c.location,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s) order by distance_m limit 50""", (lng,lat,lng,lat,radius))
         rows = cur.fetchall()

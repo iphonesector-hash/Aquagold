@@ -6,6 +6,7 @@ from uuid import UUID
 from flask import jsonify, request
 
 import app_v3
+from aquagold_validation import text as valid_text
 from ai_intake import parse_with_ai
 
 
@@ -25,16 +26,16 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
-# Registers v3 extras and PostgreSQL 18 compatibility fixes.
+# Registers v3/v4 extensions and PostgreSQL 18 compatibility fixes.
 import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
+import app_commerce  # noqa: E402,F401
+import app_routing  # noqa: E402,F401
 
 
-@app_v3.token_required
+@app_v3.roles_required("technician")
 def _smart_parse_ai():
-    text = (request.get_json() or {}).get("text", "")
-    if not text.strip():
-        return jsonify({"error": "متن لازم است"}), 400
+    text = valid_text((request.get_json() or {}).get("text"), "متن", required=True, max_length=8000)
     return jsonify(parse_with_ai(text))
 
 

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" role="img" aria-label="AquaGold stamp">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#0f766e"/><stop offset="1" stop-color="#0891b2"/></linearGradient></defs>
+<circle cx="210" cy="210" r="184" fill="none" stroke="url(#g)" stroke-width="12"/>
+<circle cx="210" cy="210" r="154" fill="none" stroke="url(#g)" stroke-width="4" stroke-dasharray="8 9"/>
+<path d="M210 91c-29 44-67 86-67 137 0 40 30 72 67 72s67-32 67-72c0-51-38-93-67-137Z" fill="none" stroke="url(#g)" stroke-width="13"/>
+<path d="M184 233c11 21 29 32 53 29" fill="none" stroke="#0f766e" stroke-width="9" stroke-linecap="round"/>
+<text x="210" y="340" text-anchor="middle" font-family="Arial,sans-serif" font-size="30" font-weight="800" fill="#0f766e">AQUAGOLD</text>
+<text x="210" y="375" text-anchor="middle" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="#0891b2" letter-spacing="4">WATER SERVICE</text>
+</svg>
