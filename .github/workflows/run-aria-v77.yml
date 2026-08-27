@@ -1,0 +1,64 @@
+name: AquaGold Aria v7.7 interruptible voice
+on:
+  push:
+    paths:
+      - '.github/workflows/run-aria-v77.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch Aria voice lifecycle
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('aqua-ai.js')
+          s=p.read_text()
+
+          old="""s.submitAquaText=async function(value,source='text'){let text=String(value??'').trim();if(!text)return false;if(this.aquaBusy){if(source==='voice')this.toast?.('آریا هنوز در حال جواب دادن است؛ یک لحظه صبر کن','info');return false}this.aquaMessages.push({role:'user',content:text});this.aquaInput='';this.aquaBusy=true;this.aquaScroll();try{let history=this.aquaHistory(),r=await this.api('/aqua-ai/chat',{method:'POST',body:JSON.stringify({text,history})}),m={role:'assistant',content:r.answer||'انجام شد',chart:r.chart,pending_action:r.pending_action,action:r.action,results:r.results};this.aquaMessages.push(m);this.aquaScroll();await this.speakAqua(m.content);return true}catch(e){this.aquaMessages.push({role:'assistant',content:e.message,error:true});return false}finally{this.aquaBusy=false;this.aquaVoiceSending=false;this.aquaScroll()}};"""
+          new="""s.submitAquaText=async function(value,source='text'){let text=String(value??'').trim();if(!text)return false;if(this.aquaBusy)return false;this.stopAquaSpeech?.();this.aquaMessages.push({role:'user',content:text});this.aquaInput='';this.aquaBusy=true;this.aquaScroll();try{let history=this.aquaHistory(),r=await this.api('/aqua-ai/chat',{method:'POST',body:JSON.stringify({text,history})}),m={role:'assistant',content:r.answer||'انجام شد',chart:r.chart,pending_action:r.pending_action,action:r.action,results:r.results};this.aquaMessages.push(m);this.aquaBusy=false;this.aquaVoiceSending=false;this.aquaScroll();setTimeout(()=>this.speakAqua(m.content),20);return true}catch(e){this.aquaMessages.push({role:'assistant',content:e.message,error:true});return false}finally{this.aquaBusy=false;this.aquaVoiceSending=false;this.aquaScroll()}};"""
+          if old not in s: raise SystemExit('submit block not found')
+          s=s.replace(old,new)
+
+          marker="s.primeAquaAudio=async function(){"
+          stop="""s.stopAquaSpeech=function(){try{if(this.aquaPlayer){this.aquaPlayer.pause();this.aquaPlayer.removeAttribute('src');this.aquaPlayer.load()}}catch{}try{if(this.aquaAudio){this.aquaAudio.pause();this.aquaAudio=null}}catch{}try{if(this.aquaAudioSource){this.aquaAudioSource.stop();this.aquaAudioSource.disconnect();this.aquaAudioSource=null}}catch{}this.aquaSpeaking=false};\n"""
+          if stop.strip() not in s:
+              s=s.replace(marker,stop+marker)
+
+          s=s.replace("aquaAudioKeeper:null,aquaPlayer:null,aquaTranscribing:false", "aquaAudioKeeper:null,aquaPlayer:null,aquaAudioSource:null,aquaTranscribing:false")
+          s=s.replace("s.toggleAquaRecording=async function(){if(this.aquaRecording){", "s.toggleAquaRecording=async function(){if(this.aquaRecording){")
+          target="if(this.aquaTranscribing||this.aquaVoiceSending||this.aquaBusy)return;if(!navigator.mediaDevices"
+          repl="if(this.aquaTranscribing||this.aquaVoiceSending||this.aquaBusy)return;this.stopAquaSpeech?.();if(!navigator.mediaDevices"
+          if target not in s: raise SystemExit('record guard not found')
+          s=s.replace(target,repl,1)
+
+          old2="let spoken=String(d.text||'').trim();if(!spoken)throw Error('صدایی برای ارسال تشخیص داده نشد');this.aquaInput='';this.aquaTranscribing=false;this.aquaVoiceSending=true;this.toast('گرفتمش؛ دارم برای آریا می‌فرستم…','success');await this.submitAquaText(spoken,'voice')"
+          new2="let spoken=String(d.text||'').trim();if(!spoken)throw Error('صدایی برای ارسال تشخیص داده نشد');this.aquaInput=spoken;this.aquaTranscribing=false;this.aquaVoiceSending=true;this.toast('گرفتمش؛ دارم برای آریا می‌فرستم…','success');let sent=await this.submitAquaText(spoken,'voice');if(!sent){this.aquaInput=spoken;this.toast('متن آماده است؛ ارسال خودکار انجام نشد','info')}"
+          if old2 not in s: raise SystemExit('transcript block not found')
+          s=s.replace(old2,new2,1)
+
+          # Do not erase transcript on errors.
+          s=s.replace("}catch(e){this.aquaVoiceSending=false;this.aquaInput='';this.toast(e.message,'error')}", "}catch(e){this.aquaVoiceSending=false;this.toast(e.message,'error')}",1)
+
+          # Track WebAudio source so Stop can interrupt it.
+          old3="src.buffer=decoded;src.connect(this.aquaAudioContext.destination);await new Promise(resolve=>{src.onended=resolve;src.start(0)});played=true"
+          new3="src.buffer=decoded;src.connect(this.aquaAudioContext.destination);this.aquaAudioSource=src;await new Promise(resolve=>{src.onended=resolve;src.start(0)});this.aquaAudioSource=null;played=true"
+          if old3 in s: s=s.replace(old3,new3,1)
+
+          # Add visible stop control beside mic while Aria is speaking.
+          old4='<button type="button" @click="toggleAquaRecording" class="aqua-mic" :class="aquaRecording?\'recording\':\'\'"><span x-html="icon(\'voice\')"></span></button><textarea'
+          new4='<button type="button" @click="toggleAquaRecording" class="aqua-mic" :class="aquaRecording?\'recording\':\'\'"><span x-html="icon(\'voice\')"></span></button><button type="button" x-show="aquaSpeaking" @click="stopAquaSpeech" class="aqua-mic" title="قطع صدای آریا">■</button><textarea'
+          if old4 not in s: raise SystemExit('composer mic markup not found')
+          s=s.replace(old4,new4,1)
+
+          p.write_text(s)
+          PY
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add aqua-ai.js
+          git commit -m "Decouple Aria text response from speech and add interrupt" || exit 0
+          git push origin main
