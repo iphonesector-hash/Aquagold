@@ -1,0 +1,40 @@
+name: AquaGold v6.6 Bale wiring
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wire Bale inbox without touching auth shell
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          s=s.replace('<title>AquaGold CRM v6.5</title>','<title>AquaGold CRM v6.6</title>')
+          s=s.replace('نسخه v6.5','نسخه v6.6')
+          css='<link href="/aqua-ai.css?v=20260827-v65" rel="stylesheet">'
+          bale_css='<link href="/bale.css?v=20260827-v66" rel="stylesheet">'
+          if bale_css not in s:
+              s=s.replace(css,css+'\n'+bale_css)
+          ai='<script src="/aqua-ai.js?v=20260827-v65"></script>'
+          bale='<script src="/bale-ui.js?v=20260827-v66"></script>'
+          if bale not in s:
+              s=s.replace(ai,ai+'\n'+bale)
+          p.write_text(s)
+          PY
+      - name: Remove one-shot workflow and commit
+        run: |
+          rm -f .github/workflows/wire-bale-v66.yml
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add index.html .github/workflows/wire-bale-v66.yml
+          git commit -m "Wire Bale work inbox into AquaGold v6.6"
+          git push
