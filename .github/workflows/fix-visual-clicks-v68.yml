@@ -1,0 +1,52 @@
+name: AquaGold v6.8 visual click safety
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Patch visual layer without touching app logic
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('ui-visual-polish.js')
+          s=p.read_text()
+          old=".aq-cinematic{position:fixed;inset:0;z-index:99999;background:url('/assets/aquagold-loading-v64.jpg') center/cover no-repeat,#00122d;overflow:hidden;color:#fff}"
+          new=".aq-cinematic{position:fixed;inset:0;z-index:99999;background:url('/assets/aquagold-loading-v64.jpg') center/cover no-repeat,#00122d;overflow:hidden;color:#fff;pointer-events:none!important;touch-action:none}"
+          assert old in s
+          s=s.replace(old,new,1)
+          old=".aq-loader{position:absolute;left:50%;top:82.1%;width:78px;height:78px;transform:translate(-50%,-50%);border-radius:50%;border:7px solid rgba(13,80,148,.58);border-top-color:#61f2ff;border-right-color:#0aa9ff;animation:aqSpinCenter 1.02s linear infinite;box-shadow:0 0 24px rgba(34,215,255,.24);will-change:transform}.aq-cinematic.out{opacity:0;transform:scale(1.01);transition:.45s ease}"
+          new=".aq-loader{position:absolute;left:50%;top:82.1%;width:78px;height:78px;transform:translate(-50%,-50%);border-radius:50%;border:7px solid rgba(13,80,148,.58);border-top-color:#61f2ff;border-right-color:#0aa9ff;animation:aqSpinCenter 1.02s linear infinite;box-shadow:0 0 24px rgba(34,215,255,.24);will-change:transform}.aq-sector{position:absolute;left:50%;top:55.5%;transform:translateX(-50%);font-family:Vazirmatn,system-ui,sans-serif;font-size:clamp(22px,5.8vw,42px);font-weight:950;letter-spacing:.34em;padding-left:.34em;color:#f8fdff;text-shadow:0 0 12px rgba(76,220,255,.75),0 0 28px rgba(21,123,255,.45);z-index:7;pointer-events:none}.aq-cinematic.out{opacity:0;transform:scale(1.01);transition:.45s ease;pointer-events:none!important}"
+          assert old in s
+          s=s.replace(old,new,1)
+          old='d.innerHTML=`<div class="aq-stage"><div class="aq-stage-logo"><i class="aq-ring r3"></i><i class="aq-ring r1"></i><i class="aq-ring r2"></i><img src="/assets/brand-sector.svg" alt="AquaGold Sector"></div><div class="aq-loader" aria-label="در حال بارگذاری"></div></div>`;'
+          new='d.innerHTML=`<div class="aq-stage"><div class="aq-stage-logo"><i class="aq-ring r3"></i><i class="aq-ring r1"></i><i class="aq-ring r2"></i><img src="/assets/brand-sector.svg" alt="AquaGold Sector"></div><div class="aq-sector">SECTOR</div><div class="aq-loader" aria-label="در حال بارگذاری"></div></div>`;'
+          assert old in s
+          s=s.replace(old,new,1)
+          old="styles();document.addEventListener('DOMContentLoaded',()=>{brandify();navIcons();splash();ripple();new MutationObserver"
+          new="styles();document.addEventListener('DOMContentLoaded',()=>{brandify();navIcons();splash();new MutationObserver"
+          assert old in s
+          s=s.replace(old,new,1)
+          p.write_text(s)
+
+          i=Path('index.html')
+          h=i.read_text()
+          h=h.replace('<title>AquaGold CRM v6.7</title>','<title>AquaGold CRM v6.8</title>')
+          h=h.replace('<title>AquaGold CRM v6.6</title>','<title>AquaGold CRM v6.8</title>')
+          h=h.replace('/ui-visual-polish.js?v=20260827-v67','/ui-visual-polish.js?v=20260827-v68')
+          h=h.replace('/ui-visual-polish.js?v=20260827-v64','/ui-visual-polish.js?v=20260827-v68')
+          i.write_text(h)
+          PY
+          rm .github/workflows/fix-visual-clicks-v68.yml
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add ui-visual-polish.js index.html .github/workflows/fix-visual-clicks-v68.yml
+          git commit -m "Make visual layers click-safe and restore SECTOR splash label"
+          git push
