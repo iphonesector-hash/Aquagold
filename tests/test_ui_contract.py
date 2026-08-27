@@ -83,18 +83,23 @@ def test_login_bootstrap_is_deterministic_and_session_verified():
     assert "credentials:'same-origin'" in finalizer
     assert "if(r.ok)" in finalizer
     assert "this.user=d.user;this.token=true;this.page='dashboard'" in finalizer
-    assert "const response=await fetch('/api/login'" in finalizer
+    assert "const r=await fetch('/api/login'" in finalizer
     assert "const verify=await fetch('/api/session'" in finalizer
     assert "if(!verify.ok||!session?.user)" in finalizer
-    assert "location.replace" in finalizer
+    assert "this.user=session.user;this.token=true;this.authReady=true;this.page='dashboard'" in finalizer
 
 
-def test_login_copy_is_patched_before_alpine_reveals_page():
-    finalizer = source("ui-v4-finalize.js")
-    app_start = finalizer.index("window.app=function()")
-    patch_call = finalizer.index("patchLoginCopy();", app_start)
-    return_state = finalizer.rindex("return s;")
-    assert app_start < patch_call < return_state
-    assert "پنل ورودی اکوا گلد نوشته شده توسط peyman.sector" in finalizer
-    assert "AquaGold CRM v6.2" in finalizer
-    assert "نسخه v6.2" in finalizer
+def test_login_copy_is_present_before_alpine_reveals_page():
+    index = source("index.html")
+    alpine = index.index("/vendor/alpinejs-3.14.9.min.js")
+    copy = index.index("پنل ورودی اکوا گلد نوشته شده توسط peyman.sector")
+    assert copy > alpine
+    assert "AquaGold CRM v6." in index
+    assert "نسخه v6." in index
+
+
+def test_bale_modal_backdrops_are_fail_safe_hidden():
+    bale = source("bale-ui.js")
+    assert 'x-cloak x-show="baleCompleteJob"' in bale
+    assert 'x-cloak x-show="baleCancelJob"' in bale
+    assert bale.count('style="display:none"') >= 2
