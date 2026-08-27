@@ -14,6 +14,11 @@ def open_section(page, label, heading):
 
 
 with sync_playwright() as p:
+    api = p.request.new_context(base_url=BASE_URL)
+    auth_probe = api.post("/api/login", data={"username": USERNAME, "password": PASSWORD})
+    assert auth_probe.status == 200, f"backend login probe failed: {auth_probe.status} {auth_probe.text()}"
+    api.dispose()
+
     browser = p.chromium.launch()
     page = browser.new_page(viewport={"width": 1440, "height": 1000})
     errors = []
@@ -21,8 +26,12 @@ with sync_playwright() as p:
 
     page.goto(BASE_URL, wait_until="domcontentloaded")
     expect(page.get_by_placeholder("نام کاربری")).to_be_visible(timeout=10000)
+    page.wait_for_timeout(1800)
+    expect(page.get_by_placeholder("نام کاربری")).to_be_visible(timeout=10000)
     page.get_by_placeholder("نام کاربری").fill(USERNAME)
     page.get_by_placeholder("رمز عبور").fill(PASSWORD)
+    expect(page.get_by_placeholder("نام کاربری")).to_have_value(USERNAME)
+    expect(page.get_by_placeholder("رمز عبور")).to_have_value(PASSWORD)
     page.get_by_role("button", name="ورود به AquaGold").click()
     expect(page.get_by_text("داشبورد هوشمند آکوا گلد", exact=True)).to_be_visible(timeout=15000)
 
