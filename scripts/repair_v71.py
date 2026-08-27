@@ -6,9 +6,10 @@ p=Path('bale-ui.js'); s=p.read_text(encoding='utf-8')
 s=s.replace("baleCompleteJob:null,baleCompleteAmount:'',baleCancelJob:null", "baleCompleteJob:null,baleCompleteAmount:'',baleSmartJob:null,baleCancelJob:null")
 old="  s.openBaleComplete=function(job){this.baleCompleteJob=job;this.baleCompleteAmount='';setTimeout(()=>document.getElementById('baleAmountInput')?.focus(),80)};"
 new="  s.sendBaleToSmart=async function(job){this.baleSmartJob=job;this.smartText=String(job?.raw_text||'').trim();this.smartParsed=null;this.smartGps={};this.smartSuggestions=[];this.smartCustomerId=job?.customer_id||'';await this.go('smart');setTimeout(()=>this.analyzeSmart?.(),80);this.toast?.('متن کار بله وارد ثبت هوشمند شد؛ GPS و اطلاعات را بررسی و ثبت نهایی کن','success')};"
-if old not in s:
+if old not in s and 's.sendBaleToSmart=async function(job)' not in s:
     raise SystemExit('openBaleComplete marker not found')
-s=s.replace(old,new)
+if old in s:
+    s=s.replace(old,new)
 s=s.replace('@click="openBaleComplete(j)">✓ انجام شد</button>', '@click="sendBaleToSmart(j)">✓ انجام شد → ثبت هوشمند</button>')
 hook="  const oldGo=s.go?.bind(s);"
 wrapper="""  const oldSmartRegister=s.registerSmart?.bind(s);
@@ -67,9 +68,10 @@ p=Path('aqua-ai.js'); s=p.read_text(encoding='utf-8')
 s=s.replace("aquaKeys:{groq_api_key:'',elevenlabs_api_key:''}", "aquaKeys:{groq_api_key:'',elevenlabs_api_key:''},aquaSettingsSaved:false")
 old="s.saveAquaSettings=async function(){try{let p={...this.aquaSettings};for(let k of ['groq_api_key','elevenlabs_api_key'])if(this.aquaKeys[k])p[k]=this.aquaKeys[k];this.aquaSettings=await this.api('/aqua-ai/settings',{method:'PATCH',body:JSON.stringify(p)});this.aquaKeys={groq_api_key:'',elevenlabs_api_key:''};this.toast('کلیدهای آکوا ذخیره شد','success')}catch(e){this.toast(e.message,'error')}};"
 new="s.saveAquaSettings=async function(){try{let p={...this.aquaSettings};for(let k of ['groq_api_key','elevenlabs_api_key'])if(this.aquaKeys[k])p[k]=this.aquaKeys[k];let saved=await this.api('/aqua-ai/settings',{method:'PATCH',body:JSON.stringify(p)});this.aquaSettings={...this.aquaSettings,...saved};this.aquaKeys={groq_api_key:'',elevenlabs_api_key:''};this.aquaSettingsSaved=true;setTimeout(()=>this.aquaSettingsSaved=false,4000);this.toast('تنظیمات آکوا با موفقیت ذخیره شد','success')}catch(e){this.aquaSettingsSaved=false;this.toast(e.message,'error')}};"
-if old not in s:
+if old in s:
+    s=s.replace(old,new)
+elif 'aquaSettingsSaved=true' not in s:
     raise SystemExit('saveAquaSettings marker not found')
-s=s.replace(old,new)
 s=s.replace('<button @click="saveAquaSettings" class="btn primary w-full mt-4">ذخیره تنظیمات آکوا</button>', '<button @click="saveAquaSettings" class="btn primary w-full mt-4">ذخیره تنظیمات آکوا</button><div x-show="aquaSettingsSaved" class="mt-3 rounded-2xl p-3 bg-emerald-500/10 text-emerald-500 text-sm font-bold">✓ تنظیمات روی سرور ذخیره شد. خالی شدن فیلد کلیدها طبیعی است؛ برای امنیت مقدار کامل دوباره نمایش داده نمی‌شود.</div>')
 p.write_text(s,encoding='utf-8')
 
@@ -121,3 +123,14 @@ for asset in ['bale-ui.js','aqua-ai.js','ui-v4-finalize.js']:
 p.write_text(s,encoding='utf-8')
 
 Path('tests/test_bale_smart_v71.py').write_text('''from pathlib import Path\nR=Path(__file__).resolve().parents[1]\ndef src(n): return (R/n).read_text(encoding="utf-8")\ndef test_bale_done_routes_to_smart():\n b=src("bale-ui.js"); assert "sendBaleToSmart" in b and "انجام شد → ثبت هوشمند" in b and "oldSmartRegister" in b\ndef test_bale_finalize_links_existing_smart_service():\n b=src("bale_bridge.py"); assert "/api/bale/jobs/<job_id>/finalize" in b and "raw_chat_input=%s" in b and "smart_finalize" in b\ndef test_ai_settings_saved_feedback():\n a=src("aqua-ai.js"); assert "aquaSettingsSaved" in a and "خالی شدن فیلد کلیدها طبیعی است" in a\ndef test_v71_assets():\n i=src("index.html"); assert "AquaGold CRM v7.1" in i and "/bale-ui.js?v=20260827-v71" in i and "/aqua-ai.js?v=20260827-v71" in i\n''',encoding='utf-8')
+
+# Update stale version assertions while preserving the behavioral contracts.
+p=Path('tests/test_ui_runtime_safety.py'); s=p.read_text(encoding='utf-8')
+s=s.replace('def test_v69_cache_busts_first_party_runtime():','def test_cache_busts_first_party_runtime():')
+s=s.replace('for name in ["ui-v3-base.js","ui-v4-enhancements.js","ui-commerce.js","ui-visual-polish.js","aqua-premium.js","aqua-ai.js","bale-ui.js","ui-v4-finalize.js"]:\n        assert f"/{name}?v=20260827-v69" in i', 'for name in ["ui-v3-base.js","ui-v4-enhancements.js","ui-commerce.js","ui-visual-polish.js","aqua-premium.js","aqua-ai.js","bale-ui.js","ui-v4-finalize.js"]:\n        assert f"/{name}?v=" in i')
+p.write_text(s,encoding='utf-8')
+
+p=Path('tests/test_ui_contract.py'); s=p.read_text(encoding='utf-8')
+s=s.replace('assert "AquaGold CRM v6." in index','assert "AquaGold CRM v7." in index')
+s=s.replace('assert "نسخه v6." in index','assert "نسخه v7." in index')
+p.write_text(s,encoding='utf-8')
