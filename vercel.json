@@ -5,5 +5,8 @@
       "maxDuration": 60,
       "excludeFiles": "{tests/**,Dockerfile,docker-compose.yml,nginx.conf}"
     }
-  }
+  },
+  "crons": [
+    {"path": "/api/ops/nightly", "schedule": "0 20 * * *"}
+  ]
 }

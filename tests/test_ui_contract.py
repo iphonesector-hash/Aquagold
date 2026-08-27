@@ -70,11 +70,13 @@ def test_lazy_modules_wait_for_authenticated_dom_before_marking_mounted():
     assert enhancement_guard < enhancement_flag
 
 
-def test_recovery_service_worker_is_network_only_and_clears_stale_caches():
+def test_v8_service_worker_is_network_only_push_capable_and_clears_stale_caches():
     worker = source("sw.js")
     assert "aquagold-network-only-recovery" in worker
-    assert "await Promise.all(keys.map(key => caches.delete(key)))" in worker
-    assert "event.respondWith(fetch(request))" in worker
+    assert "caches.keys()" in worker and "caches.delete" in worker
+    assert "respondWith(fetch(event.request))" in worker
+    assert "showNotification" in worker
+    assert "notificationclick" in worker
     assert "cache.add" not in worker
 
 
@@ -89,6 +91,8 @@ def test_login_bootstrap_is_deterministic_and_session_verified():
     assert "const verify=await fetch('/api/session'" in finalizer
     assert "if(!verify.ok||!session?.user)" in finalizer
     assert "this.user=session.user;this.token=true;this.authReady=true;this.page='dashboard'" in finalizer
+    assert "location.reload" not in finalizer
+    assert "location.replace" not in finalizer
 
 
 def test_login_copy_is_present_before_alpine_reveals_page():
@@ -105,3 +109,12 @@ def test_bale_modal_backdrops_are_fail_safe_hidden():
     assert 'x-cloak x-show="baleCompleteJob"' in bale
     assert 'x-cloak x-show="baleCancelJob"' in bale
     assert bale.count('style="display:none"') >= 2
+
+
+def test_operational_v8_hides_duplicate_floating_actions_and_excel_ui():
+    finalizer = source("ui-v4-finalize.js")
+    assert ".aq-float{display:none!important}" in finalizer
+    assert "ثبت با صدا" in finalizer
+    assert "ثبت هوشمند" in finalizer
+    assert "export.xlsx" in finalizer
+    assert "company-share" in finalizer
