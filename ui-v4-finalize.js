@@ -23,7 +23,7 @@ window.app=function(){
   let h=document.querySelector('header');if(h&&!h.querySelector('.aq-network')){let n=document.createElement('span');n.className='aq-network hidden sm:inline-flex chip';n.setAttribute(':class',"online?'bg-emerald-50 text-emerald-700':'bg-red-50 text-red-600'");n.setAttribute('x-text',"online?'● آنلاین':'● آفلاین'");let row=h.querySelector('.flex.gap-2.items-center');row?.prepend(n);if(window.Alpine)Alpine.initTree(n)}
  };
  const oldInit=s.init.bind(s);
- s.init=async function(){await oldInit();patchLoginCopy();setTimeout(patchLoginCopy,50);setTimeout(patchLoginCopy,500);let open=new URLSearchParams(location.search).get('open');if(open&&['smart','customers','map','finance','daily','expense','reminders'].includes(open)){setTimeout(()=>this.go(open),120)}};
+ s.init=async function(){await oldInit();patchLoginCopy();setTimeout(patchLoginCopy,50);setTimeout(patchLoginCopy,500);setTimeout(patchLoginCopy,1500);let open=new URLSearchParams(location.search).get('open');if(open&&['smart','customers','map','finance','daily','expense','reminders'].includes(open)){setTimeout(()=>this.go(open),120)}};
  s.login=async function(){
   this.busy=true;this.error='';
   try{
@@ -38,7 +38,6 @@ window.app=function(){
    this.error=e.status===429?'تلاش‌های ورود بیش از حد است؛ کمی بعد دوباره امتحان کن':e.status===401?'نام کاربری یا رمز عبور نادرست است':(!navigator.onLine||!e.status)?'برای ورود اولیه اتصال اینترنت لازم است':(e.message||'ورود انجام نشد');
   }finally{this.busy=false;this.authReady=true;patchLoginCopy()}
  };
- if(typeof MutationObserver!=='undefined')new MutationObserver(patchLoginCopy).observe(document.documentElement,{childList:true,subtree:true});
  return s;
 };
 })();
