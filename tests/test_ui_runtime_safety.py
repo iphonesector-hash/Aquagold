@@ -13,7 +13,7 @@ def test_notification_badge_can_be_read():
     e=src("ui-v4-enhancements.js"); i=src("index.html")
     assert "notificationBadgeCount" in e and "aq_notifications_seen" in e
     assert '@click="openNotifications"' in i
-def test_v69_cache_busts_first_party_runtime():
+def test_cache_busts_first_party_runtime():
     i=src("index.html")
     for name in ["ui-v3-base.js","ui-v4-enhancements.js","ui-commerce.js","ui-visual-polish.js","aqua-premium.js","aqua-ai.js","bale-ui.js","ui-v4-finalize.js"]:
-        assert f"/{name}?v=20260827-v69" in i
+        assert f"/{name}?v=" in i

@@ -71,6 +71,32 @@ def _load_settings(cur=None):
     return result
 
 
+def _consume_secret_bootstrap():
+    try:
+        with app_v3.get_db() as db, db.cursor() as cur:
+            cur.execute("select value from app_settings where key='aqua_ai_bootstrap' for update")
+            row = cur.fetchone()
+            payload = dict((row or {}).get("value") or {})
+            if not payload:
+                return False
+            current = _load_settings(cur)
+            for key in SECRET_FIELDS:
+                encoded = str(payload.get(key) or "")
+                if encoded:
+                    current[key] = base64.b64decode(encoded.encode()).decode()
+            if payload.get("voice_id"):
+                current["voice_id"] = str(payload["voice_id"])
+            stored = {key: current[key] for key in SAFE_FIELDS}
+            for key in SECRET_FIELDS:
+                stored[f"{key}_cipher"] = _encrypt(current.get(key, "")) if current.get(key) else ""
+            cur.execute("insert into app_settings(key,value,updated_at) values('aqua_ai',%s,now()) on conflict(key) do update set value=excluded.value,updated_at=now()", (app_v3.Jsonb(stored),))
+            cur.execute("delete from app_settings where key='aqua_ai_bootstrap'")
+        return True
+    except Exception as exc:
+        app_v3.logger.warning("aqua_ai_bootstrap_failed: %s", exc)
+        return False
+
+
 def _public_settings(settings):
     out = {k: settings.get(k) for k in SAFE_FIELDS}
     for field in SECRET_FIELDS:
@@ -79,6 +105,8 @@ def _public_settings(settings):
         out[f"{field}_mask"] = f"••••{value[-4:]}" if value else ""
     return out
 
+
+_consume_secret_bootstrap()
 
 def configuration_status():
     try:

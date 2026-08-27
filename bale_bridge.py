@@ -369,6 +369,32 @@ def bale_job_complete(job_id):
     return jsonify({"ok": True, "service_visit_id": str(service_visit_id) if service_visit_id else None})
 
 
+@app_v3.app.post("/api/bale/jobs/<job_id>/finalize")
+@app_v3.roles_required("technician")
+def bale_job_finalize(job_id):
+    with app_v3.get_db() as db, db.cursor() as cur:
+        job = _get_locked_job(cur, job_id)
+        cur.execute(
+            """select id,customer_id,received_amount from service_visits
+               where raw_chat_input=%s and registered_by=%s
+                 and created_at>=now()-interval '20 minutes'
+               order by created_at desc limit 1""",
+            (job.get("raw_text"), str(request.current_user.get("user_id"))),
+        )
+        service = cur.fetchone()
+        if not service:
+            raise ValidationError("ثبت هوشمند این کار پیدا نشد؛ ابتدا ثبت نهایی را انجام بده")
+        cur.execute(
+            """update bale_jobs set status='completed',customer_id=%s,service_visit_id=%s,
+               received_amount=%s,completed_at=now(),updated_at=now() where id=%s::uuid""",
+            (service["customer_id"], service["id"], service["received_amount"], job_id),
+        )
+        app_v3.audit(cur, "bale_job", job_id, "smart_finalize", before={"status": job["status"]}, after={"service_visit_id": str(service["id"])})
+    settings = _load_settings()
+    _send_chat(settings, job["chat_id"], "✅ کار از طریق ثبت هوشمند AquaGold انجام و وارد سرویس‌های اصلی شد", job["message_id"])
+    return jsonify({"ok": True, "service_visit_id": str(service["id"]), "customer_id": str(service["customer_id"])})
+
+
 @app_v3.app.post("/api/bale/jobs/<job_id>/cancel")
 @app_v3.roles_required("technician")
 def bale_job_cancel(job_id):

@@ -96,8 +96,8 @@ def test_login_copy_is_present_before_alpine_reveals_page():
     alpine = index.index("/vendor/alpinejs-3.14.9.min.js")
     copy = index.index("پنل ورودی اکوا گلد نوشته شده توسط peyman.sector")
     assert copy > alpine
-    assert "AquaGold CRM v6." in index
-    assert "نسخه v6." in index
+    assert "AquaGold CRM v7." in index
+    assert "نسخه v7." in index
 
 
 def test_bale_modal_backdrops_are_fail_safe_hidden():
