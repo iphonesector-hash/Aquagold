@@ -1,4 +1,4 @@
-const CACHE = 'aquagold-v6-premium-20260827-ui-startup';
+const CACHE = 'aquagold-v6-premium-20260827-ui-startup-2';
 const STATIC_ASSETS = [
   '/', '/manifest.json', '/icon-180.png', '/icon-192.png', '/icon-512.png', '/offline-store.js', '/ui-v3-base.js',
   '/ui-v4-enhancements.js', '/ui-v4-finalize.js', '/ui-commerce.js', '/ui-visual-polish.js', '/aqua-premium.js', '/aqua-premium.css',
