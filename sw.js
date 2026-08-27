@@ -1,4 +1,4 @@
-const CACHE = 'aquagold-v6.1-20260827-1';
+const CACHE = 'aquagold-v6.1-20260827-2';
 const STATIC_ASSETS = [
   '/', '/manifest.json', '/icon-180.png', '/icon-192.png', '/icon-512.png', '/offline-store.js', '/ui-v3-base.js',
   '/ui-v4-enhancements.js', '/ui-v4-finalize.js', '/ui-commerce.js', '/ui-visual-polish.js', '/aqua-premium.js', '/aqua-premium.css', '/aqua-ai.js', '/aqua-ai.css', '/commerce-guidance.js',
@@ -12,12 +12,10 @@ self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => Promise.allSettled(
     STATIC_ASSETS.map(asset => cache.add(asset))
   )));
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))));
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
