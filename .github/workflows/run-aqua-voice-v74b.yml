@@ -1,0 +1,24 @@
+name: AquaGold Aqua voice v7.4b repair
+on:
+  push:
+    paths:
+      - '.github/workflows/run-aqua-voice-v74b.yml'
+  workflow_dispatch:
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/repair_aqua_voice_v74.py
+      - run: python -m py_compile aqua_ai.py app.py
+      - run: |
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add aqua-ai.js aqua_ai.py index.html
+          git commit -m "Make Aria voice fully conversational and harden Groq fallback"
+          git push
