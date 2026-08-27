@@ -17,9 +17,9 @@
 <script src="/vendor/chart-4.4.7.min.js"></script>
 <script src="/offline-store.js?v=20260826-1"></script>
 <script src="/ui-v3-base.js?v=20260827-3"></script>
-<script src="/ui-v4-enhancements.js?v=20260826-1"></script>
+<script src="/ui-v4-enhancements.js?v=20260827-aqua1"></script>
 <script src="/ui-v4-finalize.js?v=20260826-1"></script>
-<script src="/ui-commerce.js?v=20260826-1"></script>
+<script src="/ui-commerce.js?v=20260827-aqua1"></script>
 <script src="/ui-visual-polish.js?v=20260826-1"></script>
 <script>
 const baseApp=window.app;
@@ -33,7 +33,9 @@ window.app=function(){const s=baseApp();return Object.assign(s,{
  });};
 try{document.documentElement.dataset.theme=localStorage.getItem('aquagold-theme')||'dark'}catch{}
 </script>
-<script src="/aqua-premium.js?v=20260826-1"></script>
+<script src="/aqua-premium.js?v=20260827-aqua1"></script>
+<script src="/aqua-ai.js?v=20260827-1"></script>
+<script src="/commerce-guidance.js?v=20260827-1"></script>
 <script defer src="/vendor/alpinejs-3.14.9.min.js"></script>
 <style>
 :root{--bg:#f3f7f8;--surface:rgba(255,255,255,.82);--surface-2:#fff;--text:#0b1f27;--muted:#6a7d84;--line:rgba(9,55,61,.09);--brand:#087b79;--brand2:#0ea5a8;--deep:#063c42;--cyan:#30c5d2;--good:#0a9b68;--warn:#c77a05;--danger:#dc4a55;--shadow:0 18px 55px rgba(7,44,51,.09)}
@@ -62,6 +64,7 @@ html[data-theme=dark]{--bg:#071418;--surface:rgba(14,31,36,.86);--surface-2:#102
 @media print{.no-print,.sidebar,.topbar,.bottom-nav,.fab,#toast-stack{display:none!important}body{background:white;color:black}.shell{display:block}.content{max-width:none;padding:0}.card{box-shadow:none;border:1px solid #ddd;background:white}}
 </style>
 <link href="/aqua-premium.css?v=20260826-1" rel="stylesheet">
+<link href="/aqua-ai.css?v=20260827-1" rel="stylesheet">
 </head>
 <body x-data="app()" x-init="init()" x-cloak>
 <div id="toast-stack"></div>
@@ -193,7 +196,7 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 
 </main>
 
-<button type="button" @click="go('smart')" class="fab no-print" title="ثبت هوشمند" aria-label="ثبت هوشمند"><span x-html="icon('smart')"></span></button>
+<button type="button" @click="go('aqua-ai')" class="fab no-print" title="هوش مصنوعی آکوا" aria-label="هوش مصنوعی آکوا"><span x-html="icon('smart')"></span></button>
 <nav class="bottom-nav no-print">
   <button type="button" @click="go('dashboard')" class="bottom-link" :class="page==='dashboard'?'active':''"><span class="ico" x-html="icon('home')"></span><span>خانه</span></button>
   <button type="button" @click="go('customers')" class="bottom-link" :class="['customers','customer-edit','customer-detail'].includes(page)?'active':''"><span class="ico" x-html="icon('customers')"></span><span>مشتری</span></button>
@@ -207,10 +210,10 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 if('serviceWorker' in navigator){addEventListener('load',async()=>{
   let reloading=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-3')return;
-    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-3');location.reload();
+    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-aqua1')return;
+    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-aqua1');location.reload();
   });
-  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-3',{updateViaCache:'none'});await registration.update()}catch{}
+  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-aqua1',{updateViaCache:'none'});await registration.update()}catch{}
 })}
 </script>
 </body></html>

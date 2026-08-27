@@ -309,6 +309,7 @@ input[type="datetime-local"] { color-scheme: dark; }
 .aq-search-row > span:first-child { color: #64e0ff; display: grid; place-items: center; }
 .aq-search-row > span:first-child .aq-svg { font-size: 27px; }
 .aq-float button { color: #7be8ff; background: linear-gradient(145deg, #0a3562, #04172f) !important; border-color: rgba(93, 198, 255, .29) !important; }
+.topbar button[aria-label="اعلان‌ها"]{width:52px!important;height:52px!important;padding:0!important;display:grid!important;place-items:center!important;border-radius:18px!important}.topbar button[aria-label="اعلان‌ها"] .aq-svg{width:25px;height:25px}.topbar button[aria-label="اعلان‌ها"] .aq-badge{transform:translate(15px,-15px)}
 .aq-filterbar button { color: #b8d5ec; background: rgba(5, 34, 68, .72); }
 .aq-lock { background: radial-gradient(circle at 50% 35%, #0c5e9b, #020817 70%) !important; }
 

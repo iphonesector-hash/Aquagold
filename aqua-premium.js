@@ -6,7 +6,7 @@
   const ICON_BY_PAGE = {
     dashboard: 'home', daily: 'daily', customers: 'customers', services: 'services',
     map: 'map', expense: 'expenses', finance: 'finance', insights: 'insights',
-    smart: 'smart', reminders: 'reminders', settings: 'settings', products: 'products',
+    smart: 'smart', 'aqua-ai': 'smart', reminders: 'reminders', settings: 'settings', products: 'products',
     invoices: 'invoices', 'customer-edit': 'customers', 'customer-detail': 'customers',
     'new-service': 'services', 'product-edit': 'products', 'invoice-new': 'invoices',
     'invoice-view': 'invoices'
@@ -34,10 +34,12 @@
       premiumReady: false,
       listening: false,
       speechSupported: Boolean(window.SpeechRecognition || window.webkitSpeechRecognition),
+      commerceRefreshPromise: null,
+      commerceLastRefresh: 0,
       quickActions: [
         {id: 'customers', label: 'مشتری‌ها', caption: 'پرونده و سوابق', icon: 'customers', tone: 'cyan'},
         {id: 'services', label: 'سرویس‌ها', caption: 'ثبت و پیگیری', icon: 'services', tone: 'silver'},
-        {id: 'smart', label: 'ثبت هوشمند', caption: 'متن، صدا و GPS', icon: 'smart', tone: 'azure'},
+        {id: 'aqua-ai', label: 'هوش مصنوعی آکوا', caption: 'متن، صدا و جست‌وجو', icon: 'smart', tone: 'azure'},
         {id: 'invoices', label: 'فاکتورها', caption: 'صدور و ارسال', icon: 'invoices', tone: 'gold'},
         {id: 'products', label: 'محصولات', caption: 'کاتالوگ و قیمت', icon: 'products', tone: 'ice'},
         {id: 'finance', label: 'گزارش مالی', caption: 'سود و تسویه', icon: 'finance', tone: 'blue'},
@@ -118,13 +120,57 @@
       ].join('\n'));
     };
 
+    state.hydrateDynamicSections = function hydrateDynamicSections() {
+      if (!window.Alpine?.initTree) return;
+      for (const section of document.querySelectorAll('main.content > section[x-show]')) {
+        const expression = section.getAttribute('x-show') || '';
+        const dynamic = ['products', 'product-edit', 'invoices', 'invoice-new', 'invoice-view', 'aqua-ai']
+          .some(page => expression.includes(`page==='${page}'`));
+        if (dynamic && !section._x_dataStack) window.Alpine.initTree(section);
+      }
+    };
+
+    state.ensureCommerceReady = async function ensureCommerceReady(force = false) {
+      if (!this.token) return;
+      this.mountEnhancements?.();
+      this.mountCommerce?.();
+      this.hydrateDynamicSections();
+      const stale = Date.now() - Number(this.commerceLastRefresh || 0) > 15000;
+      if (typeof this.refreshCommerce !== 'function' || (!force && !stale)) {
+        this.enhanceCommerceEmptyStates?.();
+        return;
+      }
+      if (!this.commerceRefreshPromise) {
+        this.commerceRefreshPromise = Promise.resolve(this.refreshCommerce())
+          .then(() => { this.commerceLastRefresh = Date.now(); })
+          .catch(error => {
+            console.warn('AquaGold commerce refresh failed', error);
+            if (['products', 'invoices'].includes(this.page)) {
+              this.toast(error?.message || 'اطلاعات محصولات و فاکتورها تازه نشد', 'error');
+            }
+          })
+          .finally(() => {
+            this.commerceRefreshPromise = null;
+            this.hydrateDynamicSections();
+            this.enhanceCommerceEmptyStates?.();
+          });
+      }
+      await this.commerceRefreshPromise;
+    };
+
     const originalGo = state.go.bind(state);
     state.go = async function resilientGo(page) {
       this.page = page;
       window.scrollTo({top: 0, behavior: 'smooth'});
       try {
+        if (['products', 'product-edit', 'invoices', 'invoice-new', 'invoice-view'].includes(page)) {
+          this.mountCommerce?.();
+          this.hydrateDynamicSections();
+        }
         await originalGo(page);
+        if (['products', 'invoices'].includes(page)) await this.ensureCommerceReady();
       } catch (error) {
+        console.warn('AquaGold navigation refresh failed', page, error);
         this.toast(error?.message || 'اطلاعات این بخش تازه نشد؛ دوباره تلاش کن', 'error');
       }
     };
@@ -137,9 +183,12 @@
         this.premiumReady = true;
         document.documentElement.dataset.theme ||= 'dark';
         if (this.token) {
-          [80, 240, 700].forEach(delay => setTimeout(() => {
+          [80, 240, 700].forEach((delay, index) => setTimeout(() => {
             this.mountEnhancements?.();
             this.mountCommerce?.();
+            this.hydrateDynamicSections();
+            if (index === 0) this.ensureCommerceReady(true);
+            else this.enhanceCommerceEmptyStates?.();
           }, delay));
         }
       }

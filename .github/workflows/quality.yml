@@ -61,7 +61,11 @@ jobs:
       - name: Verify critical production files
         run: |
           test -f neon/migrations/005_security_integrity.sql
+          test -f neon/migrations/006_aqua_ai_catalog.sql
+          test -f aqua_ai.py
+          test -f aqua-ai.js
           test -f scripts/migrate.py
           grep -q "aquagold_session" app_v3.py
           grep -q "Content-Security-Policy" app_v3.py
           grep -q "customer_phones_phone_unique_idx" neon/migrations/005_security_integrity.sql
+          grep -q "هوش مصنوعی آکوا" aqua-ai.js
