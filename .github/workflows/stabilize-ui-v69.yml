@@ -18,7 +18,6 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import re
-
           p=Path('index.html'); s=p.read_text()
           s=re.sub(r'<title>AquaGold CRM v[^<]+</title>','<title>AquaGold CRM v6.9</title>',s)
           s=re.sub(r'نسخه v\d+(?:\.\d+)?','نسخه v6.9',s)
@@ -30,16 +29,13 @@ jobs:
           p.write_text(s)
 
           p=Path('ui-v4-enhancements.js'); s=p.read_text()
-          needle="  notifications:{get(){let n=[];"
-          if needle not in s: raise SystemExit('notifications getter not found')
+          if "  notifications:{get(){let n=[];" not in s: raise SystemExit('notifications getter not found')
           marker="  monthCompare:{get(){"
           insert="  notificationBadgeCount:{get(){let sig=this.notifications.map(n=>n.title+'|'+n.sub).join('||'),seen='';try{seen=localStorage.getItem('aq_notifications_seen')||''}catch{}return sig&&sig!==seen?this.notifications.length:0}},\n"
-          if 'notificationBadgeCount:{get()' not in s:
-              s=s.replace(marker,insert+marker)
+          if 'notificationBadgeCount:{get()' not in s: s=s.replace(marker,insert+marker)
           old=" s.openNotification=function(n){this.notificationOpen=false;if(n.filter)this.customerFilter=n.filter;this.go(n.page)};"
           new=" s.openNotifications=function(){let sig=this.notifications.map(n=>n.title+'|'+n.sub).join('||');try{localStorage.setItem('aq_notifications_seen',sig)}catch{}this.notificationOpen=true};\n"+old
-          if 's.openNotifications=function()' not in s:
-              s=s.replace(old,new)
+          if 's.openNotifications=function()' not in s: s=s.replace(old,new)
           s=s.replace('@click=\"notificationOpen=true\"','@click=\"openNotifications\"')
           s=s.replace('x-show=\"notifications.length\" class=\"aq-badge\" x-text=\"notifications.length\"','x-show=\"notificationBadgeCount\" class=\"aq-badge\" x-text=\"notificationBadgeCount\"')
           s=s.replace('<div x-show=\"globalSearchOpen\" x-transition.opacity class=\"aq-overlay\"','<div x-show=\"globalSearchOpen\" style=\"display:none\" x-transition.opacity class=\"aq-overlay\"')
@@ -76,10 +72,10 @@ jobs:
 
           p=Path('tests/test_ui_contract.py'); s=p.read_text()
           s=s.replace('''        "customers", "services", "smart", "invoices", "products", "finance", "map", "settings",\n    }''','''        "customers", "services", "smart", "invoices", "products", "finance", "map", "settings",\n        "bale-jobs", "aqua-ai",\n    }''')
+          s=s.replace('''    for destination, icon in actions:\n        page_markup = f"page==='{destination}'"\n        assert page_markup in index or page_markup in commerce\n        assert f'id="i-{icon}"' in icons''','''    dynamic = {"bale-jobs": source("bale-ui.js"), "aqua-ai": source("aqua-ai.js")}\n    for destination, icon in actions:\n        page_markup = f"page==='{destination}'"\n        assert page_markup in index or page_markup in commerce or page_markup in dynamic.get(destination, "")\n        assert f'id="i-{icon}"' in icons''')
           p.write_text(s)
 
-          t=Path('tests/test_ui_runtime_safety.py')
-          t.write_text('''from pathlib import Path\nROOT=Path(__file__).resolve().parents[1]\ndef src(n): return (ROOT/n).read_text(encoding="utf-8")\ndef test_optional_modules_are_isolated():\n    b=src("bale-ui.js"); f=src("ui-v4-finalize.js")\n    assert "enhancement mount isolated" in b\n    assert "mountAquaAI" in f and "baleMount" in f\ndef test_visual_layer_is_passive():\n    v=src("ui-visual-polish.js")\n    assert "MutationObserver" not in v\n    assert "pointerdown" not in v\n    assert "pointer-events:none!important" in v\ndef test_notification_badge_can_be_read():\n    e=src("ui-v4-enhancements.js"); i=src("index.html")\n    assert "notificationBadgeCount" in e\n    assert "aq_notifications_seen" in e\n    assert '@click="openNotifications"' in i\ndef test_v69_cache_busts_first_party_runtime():\n    i=src("index.html")\n    for name in ["ui-v3-base.js","ui-v4-enhancements.js","ui-commerce.js","ui-visual-polish.js","aqua-premium.js","aqua-ai.js","bale-ui.js","ui-v4-finalize.js"]:\n        assert f"/{name}?v=20260827-v69" in i\n''',encoding='utf-8')
+          Path('tests/test_ui_runtime_safety.py').write_text('''from pathlib import Path\nROOT=Path(__file__).resolve().parents[1]\ndef src(n): return (ROOT/n).read_text(encoding="utf-8")\ndef test_optional_modules_are_isolated():\n    b=src("bale-ui.js"); f=src("ui-v4-finalize.js")\n    assert "enhancement mount isolated" in b\n    assert "mountAquaAI" in f and "baleMount" in f\ndef test_visual_layer_is_passive():\n    v=src("ui-visual-polish.js")\n    assert "MutationObserver" not in v and "pointerdown" not in v\n    assert "pointer-events:none!important" in v and "SECTOR" in v\ndef test_notification_badge_can_be_read():\n    e=src("ui-v4-enhancements.js"); i=src("index.html")\n    assert "notificationBadgeCount" in e and "aq_notifications_seen" in e\n    assert '@click="openNotifications"' in i\ndef test_v69_cache_busts_first_party_runtime():\n    i=src("index.html")\n    for name in ["ui-v3-base.js","ui-v4-enhancements.js","ui-commerce.js","ui-visual-polish.js","aqua-premium.js","aqua-ai.js","bale-ui.js","ui-v4-finalize.js"]:\n        assert f"/{name}?v=20260827-v69" in i\n''',encoding='utf-8')
           PY
       - name: Syntax and focused tests
         run: |
@@ -91,7 +87,7 @@ jobs:
           git config user.name aquagold-bot
           git config user.email actions@users.noreply.github.com
           git add index.html ui-v4-enhancements.js bale-ui.js ui-v4-finalize.js aqua-premium.js app_v3.py ui-visual-polish.js tests/test_ui_runtime_safety.py tests/test_ui_contract.py
-          git commit -m "Stabilize AquaGold UI runtime and restore AI Bale navigation" || true
+          git commit -m "Stabilize AquaGold UI runtime and restore AI Bale navigation"
           git push
           git rm .github/workflows/stabilize-ui-v69.yml
           git commit -m "Remove one-shot v6.9 stabilization workflow"
