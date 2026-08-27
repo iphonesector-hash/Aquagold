@@ -252,10 +252,15 @@ def _groq_answer(settings, text, history, context):
         # One tiny retry without conversation history. This also makes old chats
         # with oversized error messages self-healing instead of permanently failing.
         retry_messages = [
-            {"role": "system", "content": system_text[:1200]},
-            {"role": "user", "content": str(text)[:1200]},
+            {"role": "system", "content": system_text[:900]},
+            {"role": "user", "content": str(text)[:900]},
         ]
-        data = _post_json(endpoint, {"model": settings.get("brain_model") or "groq/compound", "messages": retry_messages, "temperature": 0.2}, headers)
+        # Compound can overflow internally on live-search/tool queries even with a tiny input.
+        # Retry on compound-mini first, then a plain chat model so the user always gets a response.
+        try:
+            data = _post_json(endpoint, {"model": "groq/compound-mini", "messages": retry_messages, "temperature": 0.2}, headers)
+        except RuntimeError:
+            data = _post_json(endpoint, {"model": "llama-3.3-70b-versatile", "messages": retry_messages, "temperature": 0.2}, headers)
     return data["choices"][0]["message"]["content"]
 
 
