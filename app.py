@@ -44,6 +44,52 @@ def _smart_parse_ai():
 
 app.view_functions["smart_parse"] = _smart_parse_ai
 
+
+@app.after_request
+def _production_shell_hotfix(response):
+    """Keep the production login shell iPhone-safe without rewriting the visual layout."""
+    content_type = response.headers.get("Content-Type", "")
+    if request.path != "/" or "text/html" not in content_type:
+        return response
+
+    try:
+        html = response.get_data(as_text=True)
+    except Exception:
+        return response
+
+    html = html.replace("<title>AquaGold CRM v6</title>", "<title>AquaGold CRM v6.1</title>")
+    html = html.replace(
+        "مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.",
+        "پنل ورودی اکوا گلد نوشته شده توسط peyman.sector",
+    )
+    html = html.replace(
+        "نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone",
+        "نسخه v6.1",
+    )
+
+    old_sw = """<script>
+if('serviceWorker' in navigator){addEventListener('load',async()=>{
+  let reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-aqua1')return;
+    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-aqua1');location.reload();
+  });
+  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-aqua1',{updateViaCache:'none'});await registration.update()}catch{}
+})}
+</script>"""
+    safe_sw = """<script>
+if('serviceWorker' in navigator){addEventListener('load',async()=>{
+  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-v6.1-safe2',{updateViaCache:'none'});registration.update().catch(()=>{})}catch{}
+})}
+</script>"""
+    html = html.replace(old_sw, safe_sw)
+
+    response.set_data(html)
+    response.headers["Content-Length"] = str(len(response.get_data()))
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 # Safe runtime diagnostic: exposes only whether Groq is configured, never the key itself.
 _original_health = app.view_functions["health"]
 
