@@ -33,6 +33,7 @@ def test_dashboard_actions_have_a_real_destination_and_icon():
     premium = source("aqua-premium.js")
     index = source("index.html")
     commerce = source("ui-commerce.js")
+    aqua = source("aqua-ai.js")
     icons = source("assets/aqua-icons.svg")
     action_block = premium.split("quickActions:", 1)[1].split("]", 1)[0]
     actions = re.findall(r"\{id: '([^']+)'.*?icon: '([^']+)'", action_block)
@@ -40,7 +41,7 @@ def test_dashboard_actions_have_a_real_destination_and_icon():
     assert {action for action, _ in actions} == {
         "customers",
         "services",
-        "smart",
+        "aqua-ai",
         "invoices",
         "products",
         "finance",
@@ -49,7 +50,7 @@ def test_dashboard_actions_have_a_real_destination_and_icon():
     }
     for destination, icon in actions:
         page_markup = f"page==='{destination}'"
-        assert page_markup in index or page_markup in commerce
+        assert page_markup in index or page_markup in commerce or page_markup in aqua
         assert f'id="i-{icon}"' in icons
 
 
@@ -89,6 +90,8 @@ def test_service_worker_precaches_premium_shell():
         "/aqua-premium.css",
         "/assets/aqua-icons.svg",
         "/assets/aqua-wave.webp",
+        "/aqua-ai.js",
+        "/aqua-ai.css",
     ):
         assert asset in worker
 
@@ -105,5 +108,18 @@ def test_startup_survives_unavailable_offline_storage_and_refreshes_old_workers(
     assert "setTimeout(()=>resolve(0),1200)" in base
     assert "ui-v3-base.js?v=20260827-3" in index
     assert "updateViaCache:'none'" in index
-    assert "20260827-ui-startup-3" in worker
+    assert "aquagold-v6-aqua-ai-20260827-1" in worker
     assert "ignoreSearch: true" not in worker
+
+
+def test_aqua_ai_ui_has_voice_settings_confirmation_and_app_actions():
+    aqua = source("aqua-ai.js")
+    index = source("index.html")
+
+    assert "هوش مصنوعی آکوا" in aqua
+    assert "toggleAquaRecording" in aqua
+    assert "confirmAqua" in aqua
+    assert "show_customer_on_map" in aqua
+    assert "groq_api_key" in aqua
+    assert "elevenlabs_api_key" in aqua
+    assert "/aqua-ai.js?v=20260827-1" in index

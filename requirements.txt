@@ -5,3 +5,4 @@ Werkzeug==3.1.8
 gunicorn==26.2.0
 psycopg[binary]==3.3.4
 openpyxl==3.1.5
+cryptography==46.0.0

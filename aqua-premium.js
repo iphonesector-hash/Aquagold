@@ -6,7 +6,7 @@
   const ICON_BY_PAGE = {
     dashboard: 'home', daily: 'daily', customers: 'customers', services: 'services',
     map: 'map', expense: 'expenses', finance: 'finance', insights: 'insights',
-    smart: 'smart', reminders: 'reminders', settings: 'settings', products: 'products',
+    smart: 'smart', 'aqua-ai': 'smart', reminders: 'reminders', settings: 'settings', products: 'products',
     invoices: 'invoices', 'customer-edit': 'customers', 'customer-detail': 'customers',
     'new-service': 'services', 'product-edit': 'products', 'invoice-new': 'invoices',
     'invoice-view': 'invoices'
@@ -37,7 +37,7 @@
       quickActions: [
         {id: 'customers', label: 'مشتری‌ها', caption: 'پرونده و سوابق', icon: 'customers', tone: 'cyan'},
         {id: 'services', label: 'سرویس‌ها', caption: 'ثبت و پیگیری', icon: 'services', tone: 'silver'},
-        {id: 'smart', label: 'ثبت هوشمند', caption: 'متن، صدا و GPS', icon: 'smart', tone: 'azure'},
+        {id: 'aqua-ai', label: 'هوش مصنوعی آکوا', caption: 'متن، صدا و جست‌وجو', icon: 'smart', tone: 'azure'},
         {id: 'invoices', label: 'فاکتورها', caption: 'صدور و ارسال', icon: 'invoices', tone: 'gold'},
         {id: 'products', label: 'محصولات', caption: 'کاتالوگ و قیمت', icon: 'products', tone: 'ice'},
         {id: 'finance', label: 'گزارش مالی', caption: 'سود و تسویه', icon: 'finance', tone: 'blue'},

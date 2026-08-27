@@ -81,7 +81,7 @@ logger = logging.getLogger("aquagold")
 app = Flask(__name__, static_folder=".", static_url_path="")
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    MAX_CONTENT_LENGTH=int(os.getenv("AQUAGOLD_MAX_REQUEST_BYTES", str(2 * 1024 * 1024))),
+    MAX_CONTENT_LENGTH=int(os.getenv("AQUAGOLD_MAX_REQUEST_BYTES", str(10 * 1024 * 1024))),
     JSON_SORT_KEYS=False,
 )
 origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "").split(",") if x.strip()]
