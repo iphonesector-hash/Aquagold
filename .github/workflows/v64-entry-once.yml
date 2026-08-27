@@ -1,0 +1,32 @@
+name: AquaGold v6.4 entry finalizer
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Finalize v6.4 entry
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('AquaGold CRM v6.3','AquaGold CRM v6.4')
+          s=s.replace('نسخه v6.3','نسخه v6.4')
+          import re
+          s=re.sub(r'/ui-visual-polish\.js\?v=[^\"]+', '/ui-visual-polish.js?v=20260827-v64', s)
+          s=re.sub(r'/ui-v4-finalize\.js\?v=[^\"]+', '/ui-v4-finalize.js?v=20260827-v64', s)
+          p.write_text(s,encoding='utf-8')
+          Path('.github/workflows/v64-entry-once.yml').unlink()
+          PY
+      - name: Commit stable entry
+        run: |
+          git config user.name "aquagold-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html .github/workflows/v64-entry-once.yml
+          git commit -m "Finalize AquaGold v6.4 entry and remove one-shot workflow"
+          git push
