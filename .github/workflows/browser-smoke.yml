@@ -45,6 +45,8 @@ jobs:
           python -m playwright install --with-deps chromium
       - name: Apply migrations
         run: python scripts/migrate.py
+      - name: Seed smoke administrator
+        run: python tests/seed_smoke_admin.py
       - name: Start AquaGold
         run: |
           python app.py > /tmp/aquagold-smoke.log 2>&1 &
