@@ -5,14 +5,34 @@ window.app=function(){
  const s=previous();
  const oldMount=s.mountEnhancements?.bind(s);
  s.mountEnhancements=function(){
-  oldMount?.();
+  try{oldMount?.()}catch(e){console.error('enhancements',e)}
   let detail=[...document.querySelectorAll('section')].find(x=>(x.getAttribute('x-show')||'').includes("page==='customer-detail'"));
   if(detail&&!detail.querySelector('.aq-quality-card')){
    let q=document.createElement('div');q.className='card p-5 aq-quality-card';
-   q.innerHTML=`<div class="flex justify-between items-center"><div><h3 class="font-black">کیفیت اطلاعات مشتری</h3><p class="text-xs text-slate-500">شماره، آدرس، GPS، دستگاه و جزئیات ثبت‌شده</p></div><b class="text-2xl" :class="profileTone(profileScore(selectedCustomer||{}))" x-text="profileScore(selectedCustomer||{})+'٪'"></b></div><div class="h-2 rounded-full bg-slate-100 overflow-hidden mt-3"><div class="h-full bg-teal-500 transition-all" :style="'width:'+profileScore(selectedCustomer||{})+'%'"></div></div>`;
+   q.innerHTML=`<div class="flex justify-between items-center"><div><h3 class="font-black">کیفیت اطلاعات مشتری</h3><p class="text-xs text-slate-500">شماره، آدرس، GPS، دستگاه و جزئیات ثبت‌شده</p></div><b class="text-2xl" :class="profileTone(profileScore(selectedCustomer||{}))" x-text="profileScore(selectedCustomer||{})+'٪'"></b></div><div class="h-2 rounded-full bg-slate-100 overflow-hidden mt-3"><div class="h-full bg-teal-500 transition-all" :style="'width:'+profileScore(selectedCustomer||{})+'%'\"></div></div>`;
    detail.insertBefore(q,detail.children[1]||null);if(window.Alpine)Alpine.initTree(q);
   }
  };
+
+ // Canonical navigation kernel. Page changes are immediate; data refreshes never block taps.
+ s.go=function(p){
+  const page=String(p||'dashboard');
+  this.page=page;
+  try{window.scrollTo({top:0,left:0,behavior:'auto'})}catch{window.scrollTo(0,0)}
+  const core=['dashboard','daily','customers','services','expense','finance','insights','reminders','settings'];
+  if(core.includes(page))Promise.resolve(this.refreshAll?.()).catch(e=>console.warn('AquaGold refresh',e));
+  if(page==='map')setTimeout(()=>{try{this.renderMainMap?.()}catch(e){console.warn('map render',e)}},60);
+  if(page==='finance')setTimeout(()=>{try{this.renderCharts?.()}catch(e){console.warn('chart render',e)}},80);
+  if(page==='aqua-ai'){
+   try{this.mountAquaAI?.();this.aquaScroll?.();this.loadAquaSettings?.().catch?.(()=>{})}catch(e){console.warn('aqua-ai nav',e)}
+  }
+  if(page==='bale-jobs'){
+   try{this.baleMount?.();Promise.all([this.loadBaleJobs?.(this.baleTab||'new'),this.loadBaleCounts?.()]).catch(e=>console.warn('bale nav',e))}catch(e){console.warn('bale nav',e)}
+  }
+  if(['products','product-edit','invoices','invoice-new','invoice-view'].includes(page))Promise.resolve(this.refreshCommerce?.()).catch(e=>console.warn('commerce nav',e));
+  return Promise.resolve();
+ };
+
  s.init=async function(){
   this.authReady=false;this.token=false;this.user=null;this.error='';
   window.addEventListener('online',()=>{this.online=true});
