@@ -81,7 +81,7 @@ logger = logging.getLogger("aquagold")
 app = Flask(__name__, static_folder=".", static_url_path="")
 app.config.update(
     SECRET_KEY=SECRET_KEY,
-    MAX_CONTENT_LENGTH=int(os.getenv("AQUAGOLD_MAX_REQUEST_BYTES", str(2 * 1024 * 1024))),
+    MAX_CONTENT_LENGTH=int(os.getenv("AQUAGOLD_MAX_REQUEST_BYTES", str(10 * 1024 * 1024))),
     JSON_SORT_KEYS=False,
 )
 origins = [x.strip() for x in os.getenv("ALLOWED_ORIGINS", "").split(",") if x.strip()]
@@ -450,7 +450,7 @@ def security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(self), geolocation=(self)")
     response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     response.headers.setdefault(
         "Content-Security-Policy",
@@ -461,6 +461,9 @@ def security_headers(response):
     )
     if request.path.startswith("/api/") or request.path == "/health":
         response.headers.setdefault("Cache-Control", "no-store")
+    elif request.path == "/" or request.path.endswith((".html", ".js", ".css", ".json")):
+        response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers["Pragma"] = "no-cache"
     if IS_PRODUCTION:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response

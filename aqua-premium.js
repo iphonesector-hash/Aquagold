@@ -6,7 +6,7 @@
   const ICON_BY_PAGE = {
     dashboard: 'home', daily: 'daily', customers: 'customers', services: 'services',
     map: 'map', expense: 'expenses', finance: 'finance', insights: 'insights',
-    smart: 'smart', reminders: 'reminders', settings: 'settings', products: 'products',
+    smart: 'smart', reminders: 'reminders', settings: 'settings', products: 'products', 'aqua-ai': 'smart', 'bale-jobs': 'services',
     invoices: 'invoices', 'customer-edit': 'customers', 'customer-detail': 'customers',
     'new-service': 'services', 'product-edit': 'products', 'invoice-new': 'invoices',
     'invoice-view': 'invoices'
@@ -42,7 +42,9 @@
         {id: 'products', label: 'محصولات', caption: 'کاتالوگ و قیمت', icon: 'products', tone: 'ice'},
         {id: 'finance', label: 'گزارش مالی', caption: 'سود و تسویه', icon: 'finance', tone: 'blue'},
         {id: 'map', label: 'نقشه', caption: 'مشتری و مسیر', icon: 'map', tone: 'aqua'},
-        {id: 'settings', label: 'تنظیمات', caption: 'امنیت و بکاپ', icon: 'settings', tone: 'steel'}
+        {id: 'settings', label: 'تنظیمات', caption: 'امنیت و بکاپ', icon: 'settings', tone: 'steel'},
+        {id: 'bale-jobs', label: 'کارهای جدید', caption: 'ورودی مستقیم از بله', icon: 'services', tone: 'cyan'},
+        {id: 'aqua-ai', label: 'هوش مصنوعی آکوا', caption: 'چت، صدا و فرمان', icon: 'smart', tone: 'azure'}
       ]
     });
 

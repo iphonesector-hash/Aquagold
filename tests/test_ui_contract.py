@@ -37,10 +37,12 @@ def test_dashboard_actions_have_a_real_destination_and_icon():
     actions = re.findall(r"\{id: '([^']+)'.*?icon: '([^']+)'", action_block)
     assert {action for action, _ in actions} == {
         "customers", "services", "smart", "invoices", "products", "finance", "map", "settings",
+        "bale-jobs", "aqua-ai",
     }
+    dynamic = {"bale-jobs": source("bale-ui.js"), "aqua-ai": source("aqua-ai.js")}
     for destination, icon in actions:
         page_markup = f"page==='{destination}'"
-        assert page_markup in index or page_markup in commerce
+        assert page_markup in index or page_markup in commerce or page_markup in dynamic.get(destination, "")
         assert f'id="i-{icon}"' in icons
 
 

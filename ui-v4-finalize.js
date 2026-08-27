@@ -21,8 +21,8 @@ window.app=function(){
    const r=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
    if(r.ok){const d=await r.json();if(d?.user){
     this.user=d.user;this.token=true;this.page='dashboard';this.authReady=true;
-    requestAnimationFrame(()=>{this.mountEnhancements?.();this.mountCommerce?.();});
-    setTimeout(()=>{this.refreshAll?.().catch(e=>console.warn('AquaGold refresh',e));this.mountEnhancements?.();this.mountCommerce?.();},80);
+    requestAnimationFrame(()=>{try{this.mountEnhancements?.()}catch(e){console.error('enhancements',e)};try{this.mountCommerce?.()}catch(e){console.error('commerce',e)};try{this.mountAquaAI?.()}catch(e){console.error('aqua-ai',e)};try{this.baleMount?.()}catch(e){console.error('bale',e)};});
+    setTimeout(()=>{this.refreshAll?.().catch(e=>console.warn('AquaGold refresh',e));try{this.mountEnhancements?.()}catch(e){console.error('enhancements',e)};try{this.mountCommerce?.()}catch(e){console.error('commerce',e)};try{this.mountAquaAI?.()}catch(e){console.error('aqua-ai',e)};try{this.baleMount?.()}catch(e){console.error('bale',e)};},80);
     return;
    }}
   }catch(e){console.warn('AquaGold session bootstrap',e)}
@@ -40,8 +40,8 @@ window.app=function(){
    try{localStorage.removeItem('aq_logout_pending')}catch{}
    this.user=session.user;this.token=true;this.authReady=true;this.page='dashboard';this.error='';
    await this.$nextTick?.();
-   requestAnimationFrame(()=>{window.scrollTo(0,0);this.mountEnhancements?.();this.mountCommerce?.();});
-   setTimeout(()=>{this.refreshAll?.().catch(e=>console.warn('AquaGold refresh',e));this.mountEnhancements?.();this.mountCommerce?.();},60);
+   requestAnimationFrame(()=>{window.scrollTo(0,0);try{this.mountEnhancements?.()}catch(e){console.error('enhancements',e)};try{this.mountCommerce?.()}catch(e){console.error('commerce',e)};try{this.mountAquaAI?.()}catch(e){console.error('aqua-ai',e)};try{this.baleMount?.()}catch(e){console.error('bale',e)};});
+   setTimeout(()=>{this.refreshAll?.().catch(e=>console.warn('AquaGold refresh',e));try{this.mountEnhancements?.()}catch(e){console.error('enhancements',e)};try{this.mountCommerce?.()}catch(e){console.error('commerce',e)};try{this.mountAquaAI?.()}catch(e){console.error('aqua-ai',e)};try{this.baleMount?.()}catch(e){console.error('bale',e)};},60);
   }catch(e){
    this.token=false;this.user=null;this.authReady=true;
    this.error=e.status===429?'تلاش‌های ورود بیش از حد است؛ کمی بعد دوباره امتحان کن':e.status===401?'نام کاربری یا رمز عبور نادرست است':e.status===403?'مرورگر اجازه ساخت نشست ورود را نداد':(!navigator.onLine||!e.status)?'ارتباط با سرور برای ورود برقرار نشد':(e.message||'ورود انجام نشد');
