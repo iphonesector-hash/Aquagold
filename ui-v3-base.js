@@ -108,6 +108,7 @@ function app(){return{
   },
   async syncOfflineQueue(){if(this.syncingOffline||!navigator.onLine||!this.token||!window.AquaOffline)return;this.syncingOffline=true;try{let r=await AquaOffline.sync((path,opts)=>this.api(path,opts));this.offlineQueueCount=r.remaining;if(r.sent){await this.refreshAll();if(this.refreshCommerce)await this.refreshCommerce();alert(`${r.sent} ثبت آفلاین همگام شد`)}if(r.failed)alert('یک ثبت آفلاین نیاز به بررسی دارد')}finally{this.syncingOffline=false}},
   async init(){
+    this.authReady=true;
     try{
       try{this.offlineQueueCount=window.AquaOffline?await Promise.race([AquaOffline.count(),new Promise(resolve=>setTimeout(()=>resolve(0),1200))]):0}catch{this.offlineQueueCount=0}
       window.addEventListener('online',async()=>{this.online=true;if(await this.finishPendingLogout()){location.reload();return}this.syncOfflineQueue()});

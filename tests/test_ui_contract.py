@@ -100,9 +100,10 @@ def test_startup_survives_unavailable_offline_storage_and_refreshes_old_workers(
 
     assert "try{this.offlineQueueCount=" in base
     assert "finally{this.authReady=true}" in base
+    assert "async init(){\n    this.authReady=true;" in base
     assert "Promise.race([AquaOffline.count()" in base
     assert "setTimeout(()=>resolve(0),1200)" in base
-    assert "ui-v3-base.js?v=20260827-2" in index
+    assert "ui-v3-base.js?v=20260827-3" in index
     assert "updateViaCache:'none'" in index
-    assert "20260827-ui-startup-2" in worker
+    assert "20260827-ui-startup-3" in worker
     assert "ignoreSearch: true" not in worker
