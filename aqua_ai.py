@@ -123,7 +123,7 @@ def _serializer():
 
 def _post_json(url, payload, headers, timeout=45):
     body = json.dumps(payload, ensure_ascii=False).encode()
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", **headers}, method="POST")
+    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "Mozilla/5.0 AquaGold/7.2", **headers}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             return json.loads(response.read().decode())
