@@ -1,0 +1,32 @@
+name: AquaGold Aqua AI v7.3 prompt repair
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/run-aqua-prompt-v73.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/repair_aqua_prompt_v73.py
+      - run: python -m py_compile aqua_ai.py app.py
+      - run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('aqua_ai.py').read_text()
+          assert 'clean_history = []' in s
+          assert 'request_too_large' in s
+          assert 'str(text)[:1200]' in s
+          PY
+      - run: |
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add aqua_ai.py
+          git commit -m "Cap Aqua AI prompt size and retry 413 safely"
+          git push
