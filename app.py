@@ -53,6 +53,7 @@ def _health_with_ai_status():
     if response.is_json:
         payload = response.get_json() or {}
         status = aqua_ai.configuration_status()
+        payload["version"] = "v6.1"
         payload["ai"] = "configured" if status["brain"] else "not_configured"
         payload["aqua_ai"] = status
         return jsonify(payload), response.status_code
