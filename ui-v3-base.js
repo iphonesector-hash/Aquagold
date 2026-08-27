@@ -108,14 +108,16 @@ function app(){return{
   },
   async syncOfflineQueue(){if(this.syncingOffline||!navigator.onLine||!this.token||!window.AquaOffline)return;this.syncingOffline=true;try{let r=await AquaOffline.sync((path,opts)=>this.api(path,opts));this.offlineQueueCount=r.remaining;if(r.sent){await this.refreshAll();if(this.refreshCommerce)await this.refreshCommerce();alert(`${r.sent} ثبت آفلاین همگام شد`)}if(r.failed)alert('یک ثبت آفلاین نیاز به بررسی دارد')}finally{this.syncingOffline=false}},
   async init(){
-    this.offlineQueueCount=window.AquaOffline?await AquaOffline.count():0;
-    window.addEventListener('online',async()=>{this.online=true;if(await this.finishPendingLogout()){location.reload();return}this.syncOfflineQueue()});
-    window.addEventListener('offline',()=>{this.online=false});
-    if(this.pendingLogout()){
-      if(navigator.onLine)await this.finishPendingLogout();
-      if(this.pendingLogout()){this.token=false;this.user=null;this.authReady=true;return}
-    }
-    try{let d=await this.api('/session');if(!d?.user||(d.expires_at&&Date.parse(d.expires_at)<=Date.now()))throw Error('نشست آفلاین منقضی شده');await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',d);this.token=true;this.user=d.user;await this.refreshAll();this.locate(false).catch(()=>{});await this.syncOfflineQueue()}catch{this.token=false;this.user=null}finally{this.authReady=true}
+    try{
+      try{this.offlineQueueCount=window.AquaOffline?await AquaOffline.count():0}catch{this.offlineQueueCount=0}
+      window.addEventListener('online',async()=>{this.online=true;if(await this.finishPendingLogout()){location.reload();return}this.syncOfflineQueue()});
+      window.addEventListener('offline',()=>{this.online=false});
+      if(this.pendingLogout()){
+        if(navigator.onLine)await this.finishPendingLogout();
+        if(this.pendingLogout()){this.token=false;this.user=null;return}
+      }
+      try{let d=await this.api('/session');if(!d?.user||(d.expires_at&&Date.parse(d.expires_at)<=Date.now()))throw Error('نشست آفلاین منقضی شده');await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',d);this.token=true;this.user=d.user;await this.refreshAll();this.locate(false).catch(()=>{});await this.syncOfflineQueue()}catch{this.token=false;this.user=null}
+    }catch(error){this.token=false;this.user=null;console.warn('AquaGold initialization fallback',error)}finally{this.authReady=true}
   },
   async login(){this.busy=true;this.error='';try{let d=await this.api('/login',{method:'POST',body:JSON.stringify(this.loginForm)});try{localStorage.removeItem('aq_logout_pending')}catch{}await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',{authenticated:true,user:d.user,expires_at:d.expires_at});this.token=true;this.user=d.user;await this.refreshAll()}catch(e){this.error=e.status===429?'تلاش‌های ورود بیش از حد است؛ کمی بعد دوباره امتحان کن':!navigator.onLine||!e.status?'برای ورود اولیه اتصال اینترنت لازم است':'نام کاربری یا رمز عبور نادرست است'}finally{this.busy=false;this.authReady=true}},
   async logout(reload=true){let revoked=!this.token;try{if(this.token){await this.api('/logout',{method:'POST'});revoked=true}}catch{}if(window.AquaOffline)await AquaOffline.clear();try{if(revoked)localStorage.removeItem('aq_logout_pending');else localStorage.setItem('aq_logout_pending','1');localStorage.removeItem('aq_offline_user');localStorage.removeItem('aq_drafts_v4')}catch{}this.token=false;this.user=null;this.offlineQueueCount=0;sessionStorage.removeItem('aq_unlocked');if(reload)location.reload()},
