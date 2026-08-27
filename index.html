@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#020817">
-<title>AquaGold CRM v6</title>
+<title>AquaGold CRM v6.1</title>
 <link rel="manifest" href="manifest.json"><link rel="icon" href="/assets/brand-sector.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,7 +16,7 @@
 <script src="/vendor/leaflet-1.9.4.js"></script>
 <script src="/vendor/chart-4.4.7.min.js"></script>
 <script src="/offline-store.js?v=20260826-1"></script>
-<script src="/ui-v3-base.js?v=20260827-3"></script>
+<script src="/ui-v3-base.js?v=20260827-v6.1-login2"></script>
 <script src="/ui-v4-enhancements.js?v=20260827-aqua1"></script>
 <script src="/ui-v4-finalize.js?v=20260826-1"></script>
 <script src="/ui-commerce.js?v=20260827-aqua1"></script>
@@ -77,14 +77,14 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 <main class="login-bg min-h-screen grid place-items-center p-5">
   <section class="relative z-10 glass w-full max-w-md rounded-[34px] p-7 md:p-8 shadow-2xl">
     <div class="flex items-center gap-3"><div class="brand-orb text-2xl"><img src="/assets/brand-sector.svg" alt="نشان AquaGold"></div><div><h1 class="text-3xl font-black">AquaGold</h1><p class="muted text-sm">مرکز هوشمند مدیریت سرویس</p></div></div>
-    <div class="mt-7 p-4 rounded-2xl bg-teal-500/10 border border-teal-400/10 text-sm muted">مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.</div>
+    <div class="mt-7 p-4 rounded-2xl bg-teal-500/10 border border-teal-400/10 text-sm muted">پنل ورودی اکوا گلد نوشته شده توسط peyman.sector</div>
     <form @submit.prevent="login" class="space-y-3 mt-6">
       <input x-model="loginForm.username" class="field" autocomplete="username" placeholder="نام کاربری">
       <input x-model="loginForm.password" type="password" autocomplete="current-password" class="field" placeholder="رمز عبور">
       <p x-show="error" x-text="error" class="text-red-500 text-sm"></p>
       <button class="btn primary w-full text-base" x-text="busy?'در حال ورود…':'ورود به AquaGold'"></button>
     </form>
-    <div class="text-center text-xs muted mt-5">نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone</div>
+    <div class="text-center text-xs muted mt-5">نسخه v6.1</div>
   </section>
 </main>
 </template>
@@ -208,12 +208,10 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 </template>
 <script>
 if('serviceWorker' in navigator){addEventListener('load',async()=>{
-  let reloading=false;
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-aqua1')return;
-    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-aqua1');location.reload();
-  });
-  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-aqua1',{updateViaCache:'none'});await registration.update()}catch{}
+  try{
+    const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-v6.1-safe3',{updateViaCache:'none'});
+    registration.update().catch(()=>{});
+  }catch{}
 })}
 </script>
 </body></html>
