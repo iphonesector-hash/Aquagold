@@ -1,0 +1,63 @@
+name: AquaGold production index hotfix
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-index:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch iPhone-safe production shell
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('<title>AquaGold CRM v6</title>', '<title>AquaGold CRM v6.1</title>')
+          s = s.replace('مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.', 'پنل ورودی اکوا گلد نوشته شده توسط peyman.sector')
+          s = s.replace('نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone', 'نسخه v6.1')
+          s = s.replace('/ui-v3-base.js?v=20260827-3', '/ui-v3-base.js?v=20260827-v6.1-login2')
+
+          safe_sw = '''<script>
+          if('serviceWorker' in navigator){addEventListener('load',async()=>{
+            try{
+              const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-v6.1-safe3',{updateViaCache:'none'});
+              registration.update().catch(()=>{});
+            }catch{}
+          })}
+          </script>'''
+          pattern = re.compile(r"<script>\s*if\('serviceWorker' in navigator\)\{addEventListener\('load',async\(\)=>\{.*?</script>", re.S)
+          s, count = pattern.subn(safe_sw, s, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one service worker block, replaced {count}')
+          if 'controllerchange' in s or 'location.reload();' in s:
+              raise SystemExit('Forced reload code still exists in index.html')
+          if 'مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.' in s:
+              raise SystemExit('Old login copy still exists')
+          if 'نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone' in s:
+              raise SystemExit('Old version footer still exists')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit hotfix
+        shell: bash
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "index.html already patched"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Fix iPhone production shell and v6.1 login copy"
+          git push
