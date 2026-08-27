@@ -91,3 +91,16 @@ def test_service_worker_precaches_premium_shell():
         "/assets/aqua-wave.webp",
     ):
         assert asset in worker
+
+
+def test_startup_survives_unavailable_offline_storage_and_refreshes_old_workers():
+    base = source("ui-v3-base.js")
+    index = source("index.html")
+    worker = source("sw.js")
+
+    assert "try{this.offlineQueueCount=" in base
+    assert "finally{this.authReady=true}" in base
+    assert "ui-v3-base.js?v=20260827-1" in index
+    assert "updateViaCache:'none'" in index
+    assert "20260827-ui-startup" in worker
+    assert "ignoreSearch: true" not in worker
