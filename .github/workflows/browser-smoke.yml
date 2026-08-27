@@ -50,7 +50,7 @@ jobs:
           python app.py > /tmp/aquagold-smoke.log 2>&1 &
           echo $! > /tmp/aquagold-smoke.pid
           for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:5000/api/health >/dev/null; then exit 0; fi
+            if curl -fsS http://127.0.0.1:5000/health >/dev/null; then exit 0; fi
             sleep 1
           done
           cat /tmp/aquagold-smoke.log
