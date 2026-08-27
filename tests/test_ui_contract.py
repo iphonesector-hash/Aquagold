@@ -38,14 +38,7 @@ def test_dashboard_actions_have_a_real_destination_and_icon():
     actions = re.findall(r"\{id: '([^']+)'.*?icon: '([^']+)'", action_block)
 
     assert {action for action, _ in actions} == {
-        "customers",
-        "services",
-        "smart",
-        "invoices",
-        "products",
-        "finance",
-        "map",
-        "settings",
+        "customers", "services", "smart", "invoices", "products", "finance", "map", "settings",
     }
     for destination, icon in actions:
         page_markup = f"page==='{destination}'"
@@ -59,45 +52,35 @@ def test_every_literal_premium_icon_reference_exists_in_sprite():
         for name in ("index.html", "aqua-premium.js", "ui-v4-enhancements.js", "ui-commerce.js")
     )
     icons = source("assets/aqua-icons.svg")
-
     referenced = set(re.findall(r"icon\('([^']+)'", combined))
     available = set(re.findall(r'<symbol id="i-([^"]+)"', icons))
-
     assert referenced <= available
 
 
 def test_lazy_modules_wait_for_authenticated_dom_before_marking_mounted():
     commerce = source("ui-commerce.js")
     enhancements = source("ui-v4-enhancements.js")
-
     commerce_guard = commerce.index("if(!main){setTimeout(()=>this.mountCommerce(),120);return}")
     commerce_flag = commerce.index("this.commerceMounted=true")
     enhancement_guard = enhancements.index(
         "if(!document.querySelector('main.content')){setTimeout(()=>this.mountEnhancements(),120);return}"
     )
     enhancement_flag = enhancements.index("this.enhancementsMounted=true")
-
     assert commerce_guard < commerce_flag
     assert enhancement_guard < enhancement_flag
 
 
-def test_service_worker_precaches_premium_shell():
+def test_recovery_service_worker_is_network_only_and_clears_stale_caches():
     worker = source("sw.js")
-
-    for asset in (
-        "/aqua-premium.js",
-        "/aqua-premium.css",
-        "/assets/aqua-icons.svg",
-        "/assets/aqua-wave.webp",
-    ):
-        assert asset in worker
+    assert "aquagold-network-only-recovery" in worker
+    assert "await Promise.all(keys.map(key => caches.delete(key)))" in worker
+    assert "event.respondWith(fetch(request))" in worker
+    assert "cache.add" not in worker
 
 
-def test_startup_survives_unavailable_offline_storage_and_refreshes_old_workers():
+def test_startup_survives_unavailable_offline_storage():
     base = source("ui-v3-base.js")
     index = source("index.html")
-    worker = source("sw.js")
-
     assert "try{this.offlineQueueCount=" in base
     assert "finally{this.authReady=true}" in base
     assert "async init(){\n    this.authReady=true;" in base
@@ -105,5 +88,21 @@ def test_startup_survives_unavailable_offline_storage_and_refreshes_old_workers(
     assert "setTimeout(()=>resolve(0),1200)" in base
     assert "ui-v3-base.js?v=20260827-3" in index
     assert "updateViaCache:'none'" in index
-    assert "20260827-ui-startup-3" in worker
-    assert "ignoreSearch: true" not in worker
+
+
+def test_login_cannot_be_overwritten_by_slow_startup_probe():
+    finalizer = source("ui-v4-finalize.js")
+    assert "s._authEpoch=0" in finalizer
+    assert "const epoch=this._authEpoch" in finalizer
+    assert "if(this._authEpoch!==epoch&&this._loginUser)" in finalizer
+    assert "const myEpoch=++this._authEpoch" in finalizer
+    assert "fetch('/api/session'" in finalizer
+    assert "credentials:'same-origin'" in finalizer
+    assert "this.page='dashboard'" in finalizer
+
+
+def test_login_copy_is_versioned_and_minimal():
+    finalizer = source("ui-v4-finalize.js")
+    assert "پنل ورودی اکوا گلد نوشته شده توسط peyman.sector" in finalizer
+    assert "AquaGold CRM v6.1" in finalizer
+    assert "نسخه v6.1" in finalizer
