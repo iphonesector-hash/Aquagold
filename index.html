@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#020817">
-<title>AquaGold CRM v6</title>
+<title>AquaGold CRM v6.3</title>
 <link rel="manifest" href="manifest.json"><link rel="icon" href="/assets/brand-sector.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -18,7 +18,6 @@
 <script src="/offline-store.js?v=20260826-1"></script>
 <script src="/ui-v3-base.js?v=20260827-3"></script>
 <script src="/ui-v4-enhancements.js?v=20260826-1"></script>
-<script src="/ui-v4-finalize.js?v=20260826-1"></script>
 <script src="/ui-commerce.js?v=20260826-1"></script>
 <script src="/ui-visual-polish.js?v=20260826-1"></script>
 <script>
@@ -34,11 +33,12 @@ window.app=function(){const s=baseApp();return Object.assign(s,{
 try{document.documentElement.dataset.theme=localStorage.getItem('aquagold-theme')||'dark'}catch{}
 </script>
 <script src="/aqua-premium.js?v=20260826-1"></script>
+<script src="/ui-v4-finalize.js?v=20260827-v63"></script>
 <script defer src="/vendor/alpinejs-3.14.9.min.js"></script>
 <style>
 :root{--bg:#f3f7f8;--surface:rgba(255,255,255,.82);--surface-2:#fff;--text:#0b1f27;--muted:#6a7d84;--line:rgba(9,55,61,.09);--brand:#087b79;--brand2:#0ea5a8;--deep:#063c42;--cyan:#30c5d2;--good:#0a9b68;--warn:#c77a05;--danger:#dc4a55;--shadow:0 18px 55px rgba(7,44,51,.09)}
 html[data-theme=dark]{--bg:#071418;--surface:rgba(14,31,36,.86);--surface-2:#10252a;--text:#eaf6f7;--muted:#91a7ad;--line:rgba(194,235,239,.09);--brand:#28b6ad;--brand2:#31c8cf;--deep:#0b2b30;--shadow:0 22px 65px rgba(0,0,0,.28)}
-*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;font-family:Vazirmatn,system-ui,sans-serif;background:radial-gradient(circle at 95% 0,rgba(48,197,210,.14),transparent 32rem),radial-gradient(circle at 0 25%,rgba(8,123,121,.08),transparent 34rem),var(--bg);color:var(--text);min-height:100vh}[x-cloak]{display:none!important}
+*{box-sizing:border-box}html{background:var(--bg)}body{margin:0;font-family:Vazirmatn,system-ui,sans-serif;background:radial-gradient(circle at 95% 0,rgba(48,197,210,.14),transparent 32rem),radial-gradient(circle at 0 25%,rgba(8,123,121,.08),transparent 34rem),var(--bg);color:var(--text);min-height:100vh}[x-cloak]{display:none!important}.aq-auth-view,.aq-shell-host{min-height:100vh}.aq-shell-host{background:var(--bg)}
 .glass{background:var(--surface);backdrop-filter:blur(22px) saturate(145%);-webkit-backdrop-filter:blur(22px) saturate(145%);border:1px solid var(--line)}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:26px;box-shadow:var(--shadow);transition:transform .22s ease,box-shadow .22s ease,border-color .22s ease}.card:hover{border-color:rgba(14,165,168,.18)}
 .field{width:100%;border:1px solid var(--line);border-radius:17px;padding:.88rem 1rem;background:color-mix(in srgb,var(--surface-2) 92%,transparent);color:var(--text);outline:none;transition:.18s}.field::placeholder{color:var(--muted)}.field:focus{border-color:var(--brand2);box-shadow:0 0 0 4px rgba(14,165,168,.11)}
@@ -70,23 +70,23 @@ window.alert=(msg)=>{const s=document.getElementById('toast-stack');if(!s)return
 if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#71858b';Chart.defaults.borderColor='rgba(90,120,125,.12)'}
 </script>
 
-<template x-if="authReady && !token">
+<div x-show="authReady && !token" class="aq-auth-view">
 <main class="login-bg min-h-screen grid place-items-center p-5">
   <section class="relative z-10 glass w-full max-w-md rounded-[34px] p-7 md:p-8 shadow-2xl">
     <div class="flex items-center gap-3"><div class="brand-orb text-2xl"><img src="/assets/brand-sector.svg" alt="نشان AquaGold"></div><div><h1 class="text-3xl font-black">AquaGold</h1><p class="muted text-sm">مرکز هوشمند مدیریت سرویس</p></div></div>
-    <div class="mt-7 p-4 rounded-2xl bg-teal-500/10 border border-teal-400/10 text-sm muted">مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.</div>
+    <div class="mt-7 p-4 rounded-2xl bg-teal-500/10 border border-teal-400/10 text-sm muted">پنل ورودی اکوا گلد نوشته شده توسط peyman.sector</div>
     <form @submit.prevent="login" class="space-y-3 mt-6">
       <input x-model="loginForm.username" class="field" autocomplete="username" placeholder="نام کاربری">
       <input x-model="loginForm.password" type="password" autocomplete="current-password" class="field" placeholder="رمز عبور">
       <p x-show="error" x-text="error" class="text-red-500 text-sm"></p>
       <button class="btn primary w-full text-base" x-text="busy?'در حال ورود…':'ورود به AquaGold'"></button>
     </form>
-    <div class="text-center text-xs muted mt-5">نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone</div>
+    <div class="text-center text-xs muted mt-5">نسخه v6.3</div>
   </section>
 </main>
-</template>
+</div>
 
-<template x-if="authReady && token">
+<div x-show="authReady && token" class="aq-shell-host">
 <div class="shell">
 <aside class="sidebar glass no-print">
   <div class="flex items-center gap-3"><div class="brand-orb text-xl"><img src="/assets/brand-sector.svg" alt="نشان AquaGold"></div><div><b class="text-xl">AquaGold</b><div class="text-[11px] muted">Field Service CRM</div></div></div>
