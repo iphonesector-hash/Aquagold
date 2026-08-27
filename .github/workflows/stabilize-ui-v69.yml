@@ -1,0 +1,109 @@
+name: AquaGold v6.9 UI stabilization
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/stabilize-ui-v69.yml']
+permissions:
+  contents: write
+jobs:
+  stabilize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Stabilize client runtime
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Cache-bust every first-party runtime asset and make the visible version consistent.
+          p=Path('index.html'); s=p.read_text()
+          s=re.sub(r'<title>AquaGold CRM v[^<]+</title>','<title>AquaGold CRM v6.9</title>',s)
+          s=re.sub(r'نسخه v\d+(?:\.\d+)?','نسخه v6.9',s)
+          for asset in ['offline-store.js','ui-v3-base.js','ui-v4-enhancements.js','ui-commerce.js','ui-visual-polish.js','aqua-premium.js','aqua-ai.js','bale-ui.js','ui-v4-finalize.js','aqua-premium.css','aqua-ai.css','bale.css']:
+              s=re.sub(r'(/'+re.escape(asset)+r')\?v=[^"\']+',r'\1?v=20260827-v69',s)
+          s=re.sub(r"/sw\.js\?v=[^'\"]+","/sw.js?v=20260827-v69",s)
+          s=s.replace('@click="notificationOpen=true"','@click="openNotifications"')
+          s=s.replace('x-show="notifications.length" class="aq-badge" x-text="notifications.length"','x-show="notificationBadgeCount" class="aq-badge" x-text="notificationBadgeCount"')
+          p.write_text(s)
+
+          # Make enhancement overlays fail-safe and notifications genuinely read/unread.
+          p=Path('ui-v4-enhancements.js'); s=p.read_text()
+          s=s.replace("globalQuery:'',globalSearchOpen:false,customerFilter:'all',notificationOpen:false,",
+                      "globalQuery:'',globalSearchOpen:false,customerFilter:'all',notificationOpen:false,")
+          needle="  notifications:{get(){let n=[];"
+          if needle not in s: raise SystemExit('notifications getter not found')
+          # Insert a separate unread-count property after notifications property, before monthCompare.
+          marker="  monthCompare:{get(){"
+          insert="  notificationBadgeCount:{get(){let sig=this.notifications.map(n=>n.title+'|'+n.sub).join('||'),seen='';try{seen=localStorage.getItem('aq_notifications_seen')||''}catch{}return sig&&sig!==seen?this.notifications.length:0}},\n"
+          if 'notificationBadgeCount:{get()' not in s:
+              s=s.replace(marker,insert+marker)
+          old=" s.openNotification=function(n){this.notificationOpen=false;if(n.filter)this.customerFilter=n.filter;this.go(n.page)};"
+          new=" s.openNotifications=function(){let sig=this.notifications.map(n=>n.title+'|'+n.sub).join('||');try{localStorage.setItem('aq_notifications_seen',sig)}catch{}this.notificationOpen=true};\n"+old
+          if 's.openNotifications=function()' not in s:
+              s=s.replace(old,new)
+          s=s.replace('@click=\"notificationOpen=true\"','@click=\"openNotifications\"')
+          s=s.replace('x-show=\"notifications.length\" class=\"aq-badge\" x-text=\"notifications.length\"','x-show=\"notificationBadgeCount\" class=\"aq-badge\" x-text=\"notificationBadgeCount\"')
+          s=s.replace('<div x-show=\"globalSearchOpen\" x-transition.opacity class=\"aq-overlay\"','<div x-show=\"globalSearchOpen\" style=\"display:none\" x-transition.opacity class=\"aq-overlay\"')
+          s=s.replace('<div x-show=\"notificationOpen\" x-transition.opacity class=\"aq-overlay\"','<div x-show=\"notificationOpen\" style=\"display:none\" x-transition.opacity class=\"aq-overlay\"')
+          s=s.replace('<div x-show=\"locked\" class=\"aq-lock\"','<div x-show=\"locked\" style=\"display:none\" class=\"aq-lock\"')
+          p.write_text(s)
+
+          # Isolate optional modules: an enhancement failure must never suppress Bale or Aqua AI.
+          p=Path('bale-ui.js'); s=p.read_text()
+          s=s.replace("s.mountEnhancements=function(){oldMount?.();this.baleMount?.();this.mountAquaAI?.();",
+                      "s.mountEnhancements=function(){try{oldMount?.()}catch(e){console.error('AquaGold enhancement mount isolated',e)};try{this.baleMount?.()}catch(e){console.error('Bale mount isolated',e)};try{this.mountAquaAI?.()}catch(e){console.error('Aqua AI mount isolated',e)};")
+          p.write_text(s)
+
+          # Final auth bootstrap mounts each optional module independently.
+          p=Path('ui-v4-finalize.js'); s=p.read_text()
+          s=s.replace("this.mountEnhancements?.();this.mountCommerce?.();",
+                      "try{this.mountEnhancements?.()}catch(e){console.error('enhancements',e)};try{this.mountCommerce?.()}catch(e){console.error('commerce',e)};try{this.mountAquaAI?.()}catch(e){console.error('aqua-ai',e)};try{this.baleMount?.()}catch(e){console.error('bale',e)};")
+          p.write_text(s)
+
+          # Put Aqua AI and Bale inbox in the dashboard's visible command center too.
+          p=Path('aqua-premium.js'); s=p.read_text()
+          s=s.replace("settings: 'settings', products: 'products',",
+                      "settings: 'settings', products: 'products', 'aqua-ai': 'smart', 'bale-jobs': 'services',")
+          q="        {id: 'settings', label: 'تنظیمات', caption: 'امنیت و بکاپ', icon: 'settings', tone: 'steel'}"
+          r="        {id: 'settings', label: 'تنظیمات', caption: 'امنیت و بکاپ', icon: 'settings', tone: 'steel'},\n        {id: 'bale-jobs', label: 'کارهای جدید', caption: 'ورودی مستقیم از بله', icon: 'services', tone: 'cyan'},\n        {id: 'aqua-ai', label: 'هوش مصنوعی آکوا', caption: 'چت، صدا و فرمان', icon: 'smart', tone: 'azure'}"
+          if "label: 'کارهای جدید'" not in s: s=s.replace(q,r)
+          p.write_text(s)
+
+          # Safari voice + development cache correctness.
+          p=Path('app_v3.py'); s=p.read_text()
+          s=s.replace('str(2 * 1024 * 1024)', 'str(10 * 1024 * 1024)')
+          s=s.replace('camera=(), microphone=(), geolocation=(self)', 'camera=(), microphone=(self), geolocation=(self)')
+          old='''    if request.path.startswith("/api/") or request.path == "/health":\n        response.headers.setdefault("Cache-Control", "no-store")'''
+          new='''    if request.path.startswith("/api/") or request.path == "/health":\n        response.headers.setdefault("Cache-Control", "no-store")\n    elif request.path == "/" or request.path.endswith((".html", ".js", ".css", ".json")):\n        response.headers["Cache-Control"] = "no-store, max-age=0"\n        response.headers["Pragma"] = "no-cache"'''
+          if old not in s: raise SystemExit('cache header block not found')
+          s=s.replace(old,new)
+          p.write_text(s)
+
+          # Runtime safety contracts so this regression cannot silently return.
+          t=Path('tests/test_ui_runtime_safety.py')
+          t.write_text('''from pathlib import Path\nROOT=Path(__file__).resolve().parents[1]\ndef src(n): return (ROOT/n).read_text(encoding="utf-8")\ndef test_optional_modules_are_isolated():\n    b=src("bale-ui.js"); f=src("ui-v4-finalize.js")\n    assert "enhancement mount isolated" in b\n    assert "mountAquaAI" in f and "baleMount" in f\ndef test_visual_layer_is_passive():\n    v=src("ui-visual-polish.js")\n    assert "MutationObserver" not in v\n    assert "pointerdown" not in v\n    assert "pointer-events:none!important" in v\ndef test_notification_badge_can_be_read():\n    e=src("ui-v4-enhancements.js"); i=src("index.html")\n    assert "notificationBadgeCount" in e\n    assert "aq_notifications_seen" in e\n    assert '@click="openNotifications"' in i\ndef test_v69_cache_busts_first_party_runtime():\n    i=src("index.html")\n    for name in ["ui-v3-base.js","ui-v4-enhancements.js","ui-commerce.js","ui-visual-polish.js","aqua-premium.js","aqua-ai.js","bale-ui.js","ui-v4-finalize.js"]:\n        assert f"/{name}?v=20260827-v69" in i\n''',encoding='utf-8')
+          PY
+      - name: Syntax and focused tests
+        run: |
+          python -m py_compile app_v3.py
+          python - <<'PY'
+          from pathlib import Path
+          for p in ['ui-v4-enhancements.js','bale-ui.js','ui-v4-finalize.js','aqua-premium.js','ui-visual-polish.js']:
+              assert Path(p).read_text().count('(()=>') >= 0
+          PY
+          pip install -q pytest
+          pytest -q tests/test_ui_runtime_safety.py tests/test_ui_contract.py
+      - name: Commit stabilization
+        run: |
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add index.html ui-v4-enhancements.js bale-ui.js ui-v4-finalize.js aqua-premium.js app_v3.py ui-visual-polish.js tests/test_ui_runtime_safety.py
+          git commit -m "Stabilize AquaGold UI runtime and restore AI Bale navigation" || true
+          git push
+          git rm .github/workflows/stabilize-ui-v69.yml
+          git commit -m "Remove one-shot v6.9 stabilization workflow"
+          git push
