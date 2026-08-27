@@ -1,0 +1,23 @@
+name: AquaGold temporary Aqua AI self-test
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/run-aqua-selftest-v72.yml']
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/add_aqua_selftest_v72.py
+      - run: python -m py_compile aqua_ai.py app.py
+      - run: |
+          git config user.name aquagold-bot
+          git config user.email actions@users.noreply.github.com
+          git add aqua_ai.py
+          git commit -m "Add one-time Aqua AI production self-test"
+          git push
