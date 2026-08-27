@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#020817">
-<title>AquaGold CRM v6.1</title>
+<title>AquaGold CRM v6</title>
 <link rel="manifest" href="manifest.json"><link rel="icon" href="/assets/brand-sector.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,10 +16,10 @@
 <script src="/vendor/leaflet-1.9.4.js"></script>
 <script src="/vendor/chart-4.4.7.min.js"></script>
 <script src="/offline-store.js?v=20260826-1"></script>
-<script src="/ui-v3-base.js?v=20260827-v6.1-login2"></script>
-<script src="/ui-v4-enhancements.js?v=20260827-aqua1"></script>
+<script src="/ui-v3-base.js?v=20260827-3"></script>
+<script src="/ui-v4-enhancements.js?v=20260826-1"></script>
 <script src="/ui-v4-finalize.js?v=20260826-1"></script>
-<script src="/ui-commerce.js?v=20260827-aqua1"></script>
+<script src="/ui-commerce.js?v=20260826-1"></script>
 <script src="/ui-visual-polish.js?v=20260826-1"></script>
 <script>
 const baseApp=window.app;
@@ -33,9 +33,7 @@ window.app=function(){const s=baseApp();return Object.assign(s,{
  });};
 try{document.documentElement.dataset.theme=localStorage.getItem('aquagold-theme')||'dark'}catch{}
 </script>
-<script src="/aqua-premium.js?v=20260827-aqua1"></script>
-<script src="/aqua-ai.js?v=20260827-1"></script>
-<script src="/commerce-guidance.js?v=20260827-1"></script>
+<script src="/aqua-premium.js?v=20260826-1"></script>
 <script defer src="/vendor/alpinejs-3.14.9.min.js"></script>
 <style>
 :root{--bg:#f3f7f8;--surface:rgba(255,255,255,.82);--surface-2:#fff;--text:#0b1f27;--muted:#6a7d84;--line:rgba(9,55,61,.09);--brand:#087b79;--brand2:#0ea5a8;--deep:#063c42;--cyan:#30c5d2;--good:#0a9b68;--warn:#c77a05;--danger:#dc4a55;--shadow:0 18px 55px rgba(7,44,51,.09)}
@@ -64,7 +62,6 @@ html[data-theme=dark]{--bg:#071418;--surface:rgba(14,31,36,.86);--surface-2:#102
 @media print{.no-print,.sidebar,.topbar,.bottom-nav,.fab,#toast-stack{display:none!important}body{background:white;color:black}.shell{display:block}.content{max-width:none;padding:0}.card{box-shadow:none;border:1px solid #ddd;background:white}}
 </style>
 <link href="/aqua-premium.css?v=20260826-1" rel="stylesheet">
-<link href="/aqua-ai.css?v=20260827-1" rel="stylesheet">
 </head>
 <body x-data="app()" x-init="init()" x-cloak>
 <div id="toast-stack"></div>
@@ -77,14 +74,14 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 <main class="login-bg min-h-screen grid place-items-center p-5">
   <section class="relative z-10 glass w-full max-w-md rounded-[34px] p-7 md:p-8 shadow-2xl">
     <div class="flex items-center gap-3"><div class="brand-orb text-2xl"><img src="/assets/brand-sector.svg" alt="نشان AquaGold"></div><div><h1 class="text-3xl font-black">AquaGold</h1><p class="muted text-sm">مرکز هوشمند مدیریت سرویس</p></div></div>
-    <div class="mt-7 p-4 rounded-2xl bg-teal-500/10 border border-teal-400/10 text-sm muted">پنل ورودی اکوا گلد نوشته شده توسط peyman.sector</div>
+    <div class="mt-7 p-4 rounded-2xl bg-teal-500/10 border border-teal-400/10 text-sm muted">مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.</div>
     <form @submit.prevent="login" class="space-y-3 mt-6">
       <input x-model="loginForm.username" class="field" autocomplete="username" placeholder="نام کاربری">
       <input x-model="loginForm.password" type="password" autocomplete="current-password" class="field" placeholder="رمز عبور">
       <p x-show="error" x-text="error" class="text-red-500 text-sm"></p>
       <button class="btn primary w-full text-base" x-text="busy?'در حال ورود…':'ورود به AquaGold'"></button>
     </form>
-    <div class="text-center text-xs muted mt-5">نسخه v6.1</div>
+    <div class="text-center text-xs muted mt-5">نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone</div>
   </section>
 </main>
 </template>
@@ -196,7 +193,7 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 
 </main>
 
-<button type="button" @click="go('aqua-ai')" class="fab no-print" title="هوش مصنوعی آکوا" aria-label="هوش مصنوعی آکوا"><span x-html="icon('smart')"></span></button>
+<button type="button" @click="go('smart')" class="fab no-print" title="ثبت هوشمند" aria-label="ثبت هوشمند"><span x-html="icon('smart')"></span></button>
 <nav class="bottom-nav no-print">
   <button type="button" @click="go('dashboard')" class="bottom-link" :class="page==='dashboard'?'active':''"><span class="ico" x-html="icon('home')"></span><span>خانه</span></button>
   <button type="button" @click="go('customers')" class="bottom-link" :class="['customers','customer-edit','customer-detail'].includes(page)?'active':''"><span class="ico" x-html="icon('customers')"></span><span>مشتری</span></button>
@@ -208,10 +205,12 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 </template>
 <script>
 if('serviceWorker' in navigator){addEventListener('load',async()=>{
-  try{
-    const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-v6.1-safe3',{updateViaCache:'none'});
-    registration.update().catch(()=>{});
-  }catch{}
+  let reloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-3')return;
+    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-3');location.reload();
+  });
+  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-3',{updateViaCache:'none'});await registration.update()}catch{}
 })}
 </script>
 </body></html>

@@ -1,7 +1,7 @@
-const CACHE = 'aquagold-v6.1-20260827-2';
+const CACHE = 'aquagold-v6-premium-20260827-ui-startup-3';
 const STATIC_ASSETS = [
   '/', '/manifest.json', '/icon-180.png', '/icon-192.png', '/icon-512.png', '/offline-store.js', '/ui-v3-base.js',
-  '/ui-v4-enhancements.js', '/ui-v4-finalize.js', '/ui-commerce.js', '/ui-visual-polish.js', '/aqua-premium.js', '/aqua-premium.css', '/aqua-ai.js', '/aqua-ai.css', '/commerce-guidance.js',
+  '/ui-v4-enhancements.js', '/ui-v4-finalize.js', '/ui-commerce.js', '/ui-visual-polish.js', '/aqua-premium.js', '/aqua-premium.css',
   '/vendor/vazirmatn.css', '/vendor/tailwindcss-3.4.17.js', '/vendor/alpinejs-3.14.9.min.js',
   '/vendor/leaflet-1.9.4.js', '/vendor/leaflet-1.9.4.css', '/vendor/chart-4.4.7.min.js',
   '/vendor/html2canvas-1.4.1.min.js', '/assets/brand-sector.svg', '/assets/aquagold-stamp.svg',
@@ -12,10 +12,12 @@ self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => Promise.allSettled(
     STATIC_ASSETS.map(asset => cache.add(asset))
   )));
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))));
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', event => {
