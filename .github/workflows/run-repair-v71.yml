@@ -21,6 +21,6 @@ jobs:
       - run: |
           git config user.name aquagold-bot
           git config user.email actions@users.noreply.github.com
-          git add bale-ui.js bale_bridge.py aqua-ai.js aqua_ai.py index.html tests/test_bale_smart_v71.py
+          git add bale-ui.js bale_bridge.py aqua-ai.js aqua_ai.py index.html tests/test_bale_smart_v71.py tests/test_ui_runtime_safety.py tests/test_ui_contract.py
           git commit -m "Route Bale completed work through Smart Intake and stabilize AI settings"
           git push
