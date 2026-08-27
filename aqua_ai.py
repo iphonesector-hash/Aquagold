@@ -219,19 +219,43 @@ def _groq_answer(settings, text, history, context):
     key = settings.get("groq_api_key")
     if not key:
         return "کلید Groq هنوز تنظیم نشده است. مدیر می‌تواند آن را از تنظیمات ← هوش مصنوعی آکوا وارد کند."
-    messages = [{
-        "role": "system",
-        "content": "تو هوش مصنوعی آکوا، دستیار فارسی CRM تصفیه آب هستی. کوتاه، دقیق و عملی جواب بده. برای اطلاعات روز از سرچ وب داخلی استفاده کن و منبع بده. هیچ تغییر دیتابیسی را بدون کارت تایید برنامه انجام‌شده فرض نکن. زمینه فعلی برنامه: " + json.dumps(context, ensure_ascii=False),
-    }]
-    for item in (history or [])[-8:]:
-        if item.get("role") in {"user", "assistant"}:
-            messages.append({"role": item["role"], "content": str(item.get("content", ""))[:4000]})
-    messages.append({"role": "user", "content": text})
-    data = _post_json(
-        "https://api.groq.com/openai/v1/chat/completions",
-        {"model": settings.get("brain_model") or "groq/compound", "messages": messages, "temperature": 0.2},
-        {"Authorization": f"Bearer {key}"},
-    )
+    compact_context = {
+        "customers": int(context.get("customers") or 0),
+        "products": int(context.get("products") or 0),
+        "today_sales": int(context.get("today_sales") or 0),
+        "today_received": int(context.get("today_received") or 0),
+    }
+    system_text = "تو آریا، دستیار فارسی و تهرانی AquaGold هستی. کوتاه، دقیق و عملی جواب بده. تغییر دیتابیس را بدون تأیید کاربر انجام‌شده فرض نکن. وضعیت فعلی: " + json.dumps(compact_context, ensure_ascii=False)
+    messages = [{"role": "system", "content": system_text}]
+    # Keep the request comfortably below upstream body limits. The current user
+    # message is appended separately, so remove an identical trailing history item.
+    clean_history = []
+    for item in (history or [])[-4:]:
+        if item.get("role") not in {"user", "assistant"}:
+            continue
+        content = str(item.get("content", "")).strip()[:900]
+        if content:
+            clean_history.append({"role": item["role"], "content": content})
+    if clean_history and clean_history[-1]["role"] == "user" and clean_history[-1]["content"] == str(text).strip()[:900]:
+        clean_history.pop()
+    messages.extend(clean_history)
+    messages.append({"role": "user", "content": str(text)[:1800]})
+    endpoint = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {key}"}
+    payload = {"model": settings.get("brain_model") or "groq/compound", "messages": messages, "temperature": 0.2}
+    try:
+        data = _post_json(endpoint, payload, headers)
+    except RuntimeError as exc:
+        msg = str(exc).lower()
+        if "413" not in msg and "request_too_large" not in msg and "request entity too" not in msg:
+            raise
+        # One tiny retry without conversation history. This also makes old chats
+        # with oversized error messages self-healing instead of permanently failing.
+        retry_messages = [
+            {"role": "system", "content": system_text[:1200]},
+            {"role": "user", "content": str(text)[:1200]},
+        ]
+        data = _post_json(endpoint, {"model": settings.get("brain_model") or "groq/compound", "messages": retry_messages, "temperature": 0.2}, headers)
     return data["choices"][0]["message"]["content"]
 
 
