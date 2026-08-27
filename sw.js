@@ -1,4 +1,4 @@
-const CACHE = 'aquagold-v6-aqua-ai-20260827-1';
+const CACHE = 'aquagold-v6.1-20260827-1';
 const STATIC_ASSETS = [
   '/', '/manifest.json', '/icon-180.png', '/icon-192.png', '/icon-512.png', '/offline-store.js', '/ui-v3-base.js',
   '/ui-v4-enhancements.js', '/ui-v4-finalize.js', '/ui-commerce.js', '/ui-visual-polish.js', '/aqua-premium.js', '/aqua-premium.css', '/aqua-ai.js', '/aqua-ai.css', '/commerce-guidance.js',
