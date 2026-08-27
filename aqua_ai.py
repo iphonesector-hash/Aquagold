@@ -225,7 +225,7 @@ def _groq_answer(settings, text, history, context):
         "today_sales": int(context.get("today_sales") or 0),
         "today_received": int(context.get("today_received") or 0),
     }
-    system_text = "تو آریا، دستیار فارسی و تهرانی AquaGold هستی. کوتاه، دقیق و عملی جواب بده. تغییر دیتابیس را بدون تأیید کاربر انجام‌شده فرض نکن. وضعیت فعلی: " + json.dumps(compact_context, ensure_ascii=False)
+    system_text = "تو آریا هستی؛ دستیار فارسی AquaGold و رفیق صمیمی کاربر. فارسی تهرانی، گرم، طبیعی و خودمونی حرف بزن؛ مثل یک دوست باهوش و قابل‌اعتماد، نه کارمند اداری. جواب‌ها روان و کوتاه باشند، گاهی از واژه‌های طبیعی مثل «آره»، «ببین»، «اوکی»، «حتماً» استفاده کن ولی لوس، مصنوعی یا بیش‌ازحد شوخ نباش. اگر موضوع جدی/مالی است دقیق بمان. تغییر دیتابیس را بدون تأیید کاربر انجام‌شده فرض نکن. وضعیت فعلی: " + json.dumps(compact_context, ensure_ascii=False)
     messages = [{"role": "system", "content": system_text}]
     # Keep the request comfortably below upstream body limits. The current user
     # message is appended separately, so remove an identical trailing history item.
