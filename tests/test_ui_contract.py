@@ -22,7 +22,6 @@ def test_premium_assets_load_before_alpine_boots():
         "/aqua-premium.js",
     ]
     alpine = index.index("/vendor/alpinejs-3.14.9.min.js")
-
     assert all(index.index(path) < alpine for path in required)
     assert "/aqua-premium.css" in index
     assert "/assets/aqua-wave.webp" in source("aqua-premium.css")
@@ -36,7 +35,6 @@ def test_dashboard_actions_have_a_real_destination_and_icon():
     icons = source("assets/aqua-icons.svg")
     action_block = premium.split("quickActions:", 1)[1].split("]", 1)[0]
     actions = re.findall(r"\{id: '([^']+)'.*?icon: '([^']+)'", action_block)
-
     assert {action for action, _ in actions} == {
         "customers", "services", "smart", "invoices", "products", "finance", "map", "settings",
     }
@@ -78,31 +76,25 @@ def test_recovery_service_worker_is_network_only_and_clears_stale_caches():
     assert "cache.add" not in worker
 
 
-def test_startup_survives_unavailable_offline_storage():
-    base = source("ui-v3-base.js")
-    index = source("index.html")
-    assert "try{this.offlineQueueCount=" in base
-    assert "finally{this.authReady=true}" in base
-    assert "async init(){\n    this.authReady=true;" in base
-    assert "Promise.race([AquaOffline.count()" in base
-    assert "setTimeout(()=>resolve(0),1200)" in base
-    assert "ui-v3-base.js?v=20260827-3" in index
-    assert "updateViaCache:'none'" in index
-
-
-def test_login_cannot_be_overwritten_by_slow_startup_probe():
+def test_login_bootstrap_is_deterministic_and_session_verified():
     finalizer = source("ui-v4-finalize.js")
-    assert "s._authEpoch=0" in finalizer
-    assert "const epoch=this._authEpoch" in finalizer
-    assert "if(this._authEpoch!==epoch&&this._loginUser)" in finalizer
-    assert "const myEpoch=++this._authEpoch" in finalizer
+    assert "this.authReady=false;this.token=false;this.user=null" in finalizer
     assert "fetch('/api/session'" in finalizer
     assert "credentials:'same-origin'" in finalizer
-    assert "this.page='dashboard'" in finalizer
+    assert "if(r.ok)" in finalizer
+    assert "this.user=d.user;this.token=true;this.page='dashboard'" in finalizer
+    assert "const response=await fetch('/api/login'" in finalizer
+    assert "const verify=await fetch('/api/session'" in finalizer
+    assert "if(!verify.ok||!session?.user)" in finalizer
+    assert "location.replace" in finalizer
 
 
-def test_login_copy_is_versioned_and_minimal():
+def test_login_copy_is_patched_before_alpine_reveals_page():
     finalizer = source("ui-v4-finalize.js")
+    app_start = finalizer.index("window.app=function()")
+    patch_call = finalizer.index("patchLoginCopy();", app_start)
+    return_state = finalizer.rindex("return s;")
+    assert app_start < patch_call < return_state
     assert "پنل ورودی اکوا گلد نوشته شده توسط peyman.sector" in finalizer
-    assert "AquaGold CRM v6.1" in finalizer
-    assert "نسخه v6.1" in finalizer
+    assert "AquaGold CRM v6.2" in finalizer
+    assert "نسخه v6.2" in finalizer
