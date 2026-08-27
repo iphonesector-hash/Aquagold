@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -192,7 +193,7 @@ def _customer_draft(text):
 def _today_sales(cur):
     cur.execute(
         """
-        select extract(hour from coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::int hour,
+        select extract(hour from coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::int as hour_of_day,
                coalesce(sum(invoice_amount),0)::bigint sales,coalesce(sum(received_amount),0)::bigint received
         from service_visits
         where (coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::date=(now() at time zone 'Asia/Tehran')::date
@@ -200,6 +201,8 @@ def _today_sales(cur):
         """
     )
     points = [app_v3.row_json(row) for row in cur.fetchall()]
+    for point in points:
+        point["hour"] = point.pop("hour_of_day", point.get("hour"))
     return points, sum(int(x["sales"]) for x in points), sum(int(x["received"]) for x in points)
 
 
@@ -390,15 +393,35 @@ def aqua_speak():
     if not key:
         return jsonify({"error": "کلید ElevenLabs در تنظیمات وارد نشده است"}), 409
     voice_id = settings.get("voice_id") or DEFAULTS["voice_id"]
-    req = urllib.request.Request(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_44100_128",
-        data=json.dumps({"text": text, "model_id": settings.get("tts_model") or "eleven_v3"}, ensure_ascii=False).encode(),
-        headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=60) as response:
-            audio = response.read()
-    except urllib.error.HTTPError as exc:
-        return jsonify({"error": f"ساخت صدا ناموفق بود ({exc.code})"}), 502
-    return Response(audio, mimetype="audio/mpeg", headers={"Cache-Control": "no-store"})
+    requested_model = settings.get("tts_model") or "eleven_v3"
+    models = [requested_model]
+    if requested_model != "eleven_multilingual_v2":
+        models.append("eleven_multilingual_v2")
+    last_error = None
+    for model_id in models:
+        for attempt in range(3):
+            req = urllib.request.Request(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format=mp3_44100_128",
+                data=json.dumps({"text": text, "model_id": model_id}, ensure_ascii=False).encode(),
+                headers={"xi-api-key": key, "Content-Type": "application/json", "Accept": "audio/mpeg"},
+                method="POST",
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    audio = response.read()
+                    if audio:
+                        return Response(audio, mimetype="audio/mpeg", headers={"Cache-Control": "no-store", "X-Aqua-TTS-Model": model_id})
+                    last_error = "empty_audio"
+            except urllib.error.HTTPError as exc:
+                detail = exc.read().decode(errors="replace")[:500]
+                last_error = f"HTTP {exc.code}: {detail}"
+                app_v3.logger.warning("aqua_tts_failed model=%s attempt=%s status=%s detail=%s", model_id, attempt + 1, exc.code, detail)
+                if exc.code not in {408, 409, 422, 429, 500, 502, 503, 504}:
+                    break
+            except urllib.error.URLError as exc:
+                last_error = str(exc.reason)[:300]
+                app_v3.logger.warning("aqua_tts_network_failed model=%s attempt=%s detail=%s", model_id, attempt + 1, last_error)
+            if attempt < 2:
+                time.sleep(0.35 * (attempt + 1))
+    app_v3.logger.error("aqua_tts_exhausted detail=%s", last_error)
+    return jsonify({"error": "ساخت صدای آریا موقتاً ناموفق بود؛ دوباره تلاش کن"}), 502
