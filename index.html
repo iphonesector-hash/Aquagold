@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#020817">
-<title>AquaGold CRM v6.5</title>
+<title>AquaGold CRM v6.6</title>
 <link rel="manifest" href="manifest.json"><link rel="icon" href="/assets/brand-sector.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -34,6 +34,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem('aquagold-theme'
 </script>
 <script src="/aqua-premium.js?v=20260826-1"></script>
 <script src="/aqua-ai.js?v=20260827-v65"></script>
+<script src="/bale-ui.js?v=20260827-v66"></script>
 <script src="/ui-v4-finalize.js?v=20260827-v64"></script>
 <script defer src="/vendor/alpinejs-3.14.9.min.js"></script>
 <style>
@@ -64,6 +65,7 @@ html[data-theme=dark]{--bg:#071418;--surface:rgba(14,31,36,.86);--surface-2:#102
 </style>
 <link href="/aqua-premium.css?v=20260826-1" rel="stylesheet">
 <link href="/aqua-ai.css?v=20260827-v65" rel="stylesheet">
+<link href="/bale.css?v=20260827-v66" rel="stylesheet">
 </head>
 <body x-data="app()" x-init="init()" x-cloak>
 <div id="toast-stack"></div>
@@ -83,7 +85,7 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
       <p x-show="error" x-text="error" class="text-red-500 text-sm"></p>
       <button class="btn primary w-full text-base" x-text="busy?'در حال ورود…':'ورود به AquaGold'"></button>
     </form>
-    <div class="text-center text-xs muted mt-5">نسخه v6.5</div>
+    <div class="text-center text-xs muted mt-5">نسخه v6.6</div>
   </section>
 </main>
 </div>
