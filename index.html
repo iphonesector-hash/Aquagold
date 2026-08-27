@@ -16,7 +16,7 @@
 <script src="/vendor/leaflet-1.9.4.js"></script>
 <script src="/vendor/chart-4.4.7.min.js"></script>
 <script src="/offline-store.js?v=20260826-1"></script>
-<script src="/ui-v3-base.js?v=20260827-1"></script>
+<script src="/ui-v3-base.js?v=20260827-2"></script>
 <script src="/ui-v4-enhancements.js?v=20260826-1"></script>
 <script src="/ui-v4-finalize.js?v=20260826-1"></script>
 <script src="/ui-commerce.js?v=20260826-1"></script>
@@ -207,10 +207,10 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
 if('serviceWorker' in navigator){addEventListener('load',async()=>{
   let reloading=false;
   navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-1')return;
-    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-1');location.reload();
+    if(reloading||sessionStorage.getItem('aq_sw_release')==='20260827-2')return;
+    reloading=true;sessionStorage.setItem('aq_sw_release','20260827-2');location.reload();
   });
-  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-1',{updateViaCache:'none'});await registration.update()}catch{}
+  try{const registration=await navigator.serviceWorker.register('/sw.js?v=20260827-2',{updateViaCache:'none'});await registration.update()}catch{}
 })}
 </script>
 </body></html>
