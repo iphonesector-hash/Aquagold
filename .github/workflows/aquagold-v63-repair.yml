@@ -1,0 +1,69 @@
+name: AquaGold v6.3 one-shot repair
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: ${{ !contains(github.event.head_commit.message, 'Apply AquaGold v6.3 shell repair') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Repair auth shell, script order and legacy splash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          index = Path('index.html')
+          s = index.read_text(encoding='utf-8')
+
+          # Make the auth finalizer truly final: after commerce/premium and immediately before Alpine.
+          s = re.sub(r'\n<script src="/ui-v4-finalize\.js\?v=[^"]+"></script>', '', s, count=1)
+          alpine = '<script defer src="/vendor/alpinejs-3.14.9.min.js"></script>'
+          finalizer = '<script src="/ui-v4-finalize.js?v=20260827-v63"></script>\n' + alpine
+          if finalizer not in s:
+              s = s.replace(alpine, finalizer, 1)
+
+          # Avoid cloning/destroying the entire huge app shell on auth transitions.
+          s = s.replace('<template x-if="authReady && !token">', '<div x-show="authReady && !token" class="aq-auth-view">', 1)
+          login_end = '''    <div class="text-center text-xs muted mt-5">نسخه v6 • طراحی‌شده برای استفاده سریع روی iPhone</div>\n  </section>\n</main>\n</template>'''
+          login_new = '''    <div class="text-center text-xs muted mt-5">نسخه v6.3</div>\n  </section>\n</main>\n</div>'''
+          s = s.replace(login_end, login_new, 1)
+          s = s.replace('<template x-if="authReady && token">\n<div class="shell">', '<div x-show="authReady && token" class="aq-shell-host">\n<div class="shell">', 1)
+
+          # Close authenticated host instead of its old template wrapper.
+          marker = '''</div>\n</template>\n\n<script>\nif('serviceWorker' in navigator)'''
+          if marker in s:
+              s = s.replace(marker, '''</div>\n</div>\n\n<script>\nif('serviceWorker' in navigator)''', 1)
+
+          # Permanent login copy, no JS text flash.
+          s = s.replace('مشتری، سرویس، GPS و حساب‌وکتاب روزانه در یک پنل امن.', 'پنل ورودی اکوا گلد نوشته شده توسط peyman.sector')
+          s = s.replace('<title>AquaGold CRM v6</title>', '<title>AquaGold CRM v6.3</title>')
+
+          # Stable body background while Alpine boots.
+          s = s.replace('[x-cloak]{display:none!important}', '[x-cloak]{display:none!important}.aq-auth-view,.aq-shell-host{min-height:100vh}.aq-shell-host{background:var(--bg)}', 1)
+
+          index.write_text(s, encoding='utf-8')
+
+          commerce = Path('ui-commerce.js')
+          c = commerce.read_text(encoding='utf-8')
+          c = c.replace("splashVisible:!sessionStorage.getItem('aq_splash_seen')", 'splashVisible:false')
+          c = re.sub(r"\n let splash=document\.createElement\('template'\);.*?if\(this\.splashVisible\)setTimeout\(\(\)=>this\.dismissSplash\(\),2600\)", '', c, count=1, flags=re.S)
+          c = c.replace('[prod,pe,inv,ni,iv,splash].forEach(x=>Alpine.initTree(x))', '[prod,pe,inv,ni,iv].forEach(x=>Alpine.initTree(x))')
+          commerce.write_text(c, encoding='utf-8')
+          PY
+      - name: Commit repair
+        run: |
+          git config user.name "aquagold-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add index.html ui-commerce.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Apply AquaGold v6.3 shell repair"
+          git push
