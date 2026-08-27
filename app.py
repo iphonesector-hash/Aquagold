@@ -28,7 +28,7 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
-# Registers v3/v4/v6 extensions, Aqua AI, Bale intake and PostgreSQL compatibility fixes.
+# Stable core extensions first.
 import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
 import app_commerce  # noqa: E402,F401
@@ -36,6 +36,34 @@ import app_routing  # noqa: E402,F401
 import aqua_ai  # noqa: E402,F401
 import bale_bridge  # noqa: E402,F401
 import bale_bootstrap  # noqa: E402,F401
+
+# Operational v8 performs idempotent schema checks during import. Serialize that import
+# across serverless cold starts so concurrent CREATE/TRIGGER statements cannot collide.
+_ops_lock_db = None
+_ops_lock_cur = None
+try:
+    _ops_lock_db = app_v3.get_db()
+    _ops_lock_cur = _ops_lock_db.cursor()
+    _ops_lock_cur.execute("select pg_advisory_lock(hashtext('aquagold-operational-v8-import'))")
+    import operational_v8  # noqa: E402,F401
+finally:
+    if _ops_lock_cur is not None:
+        try:
+            _ops_lock_cur.execute("select pg_advisory_unlock(hashtext('aquagold-operational-v8-import'))")
+        except Exception:
+            pass
+        try:
+            _ops_lock_cur.close()
+        except Exception:
+            pass
+    if _ops_lock_db is not None:
+        try:
+            _ops_lock_db.close()
+        except Exception:
+            pass
+
+import operational_v8_fixes  # noqa: E402,F401
+import aria_v8  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
@@ -46,7 +74,7 @@ def _smart_parse_ai():
 
 app.view_functions["smart_parse"] = _smart_parse_ai
 
-# Safe runtime diagnostic: exposes only whether providers are configured, never secrets.
+# Safe runtime diagnostic: exposes only booleans, never credentials.
 _original_health = app.view_functions["health"]
 
 
