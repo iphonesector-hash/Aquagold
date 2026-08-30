@@ -1,4 +1,4 @@
-"""Ensure the Aqua voice hotfix is actually present in the delivered HTML."""
+"""Ensure the Aqua voice hotfix and iOS Persian TTS patch are delivered in order."""
 from flask import request
 
 import app_v3
@@ -10,11 +10,17 @@ def inject_aqua_voice_hotfix(response):
         if request.path in {"/", "/index.html"} and response.mimetype == "text/html":
             response.direct_passthrough = False
             body = response.get_data(as_text=True)
-            tag = '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-dariush1"></script>'
-            if "aqua-voice-runtime-hotfix.js" not in body:
+            tags = (
+                '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-dariush2"></script>'
+                '<script src="/aqua-ios-tts-patch.js?v=20260831-ios1"></script>'
+            )
+            if "aqua-ios-tts-patch.js" not in body:
+                # Remove any older injected voice runtime tag so the ordered pair is deterministic.
+                import re
+                body = re.sub(r'<script src="/aqua-voice-runtime-hotfix\.js\?v=[^"]+"></script>', '', body)
                 pos = body.lower().find("</head>")
                 if pos >= 0:
-                    body = body[:pos] + tag + body[pos:]
+                    body = body[:pos] + tags + body[pos:]
                     response.set_data(body)
                     response.headers["Content-Length"] = str(len(response.get_data()))
             response.headers["Cache-Control"] = "no-store, max-age=0"
