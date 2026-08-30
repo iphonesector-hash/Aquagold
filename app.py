@@ -34,6 +34,7 @@ import app_fixes  # noqa: E402,F401
 import app_commerce  # noqa: E402,F401
 import app_routing  # noqa: E402,F401
 import aqua_ai  # noqa: E402,F401
+import aqua_groq_runtime_hotfix  # noqa: E402,F401
 import aqua_voice_runtime_hotfix  # noqa: E402,F401
 import bale_bridge  # noqa: E402,F401
 import bale_bootstrap  # noqa: E402,F401
