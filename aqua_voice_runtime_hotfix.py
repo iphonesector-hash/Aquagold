@@ -1,8 +1,9 @@
 """Narrow runtime hotfix for Aqua voice on iPhone/PWA.
 
-Keeps the existing Aqua UI intact while restoring the simple MediaRecorder flow,
-using Groq Whisper when ElevenLabs STT is unavailable, and cache-busting only
-the voice hotfix asset.
+Fixes three isolated voice paths without changing the rest of AquaGold:
+- stable iPhone MediaRecorder capture;
+- Groq Whisper STT with the same browser-like HTTP headers used by working Groq chat calls;
+- speech state that becomes active only when audio is actually playing, with iOS speechSynthesis fallback.
 """
 from __future__ import annotations
 
@@ -24,7 +25,13 @@ def _provider_post(url, fields, filename, audio, mimetype, headers, timeout=60):
     req = urllib.request.Request(
         url,
         data=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}", **headers},
+        headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Accept": "application/json",
+            "User-Agent": "Mozilla/5.0 AquaGold/7.2",
+            "Content-Length": str(len(body)),
+            **headers,
+        },
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -50,8 +57,6 @@ def aqua_transcribe_runtime():
     eleven_key = settings.get("elevenlabs_api_key")
     provider_errors = []
 
-    # Groq Whisper is independent from ElevenLabs character credits and supports
-    # mp4/m4a/webm/ogg, which makes it a stable first choice for iPhone captures.
     if groq_key:
         try:
             payload = _provider_post(
@@ -69,17 +74,17 @@ def aqua_transcribe_runtime():
             )
             text = str(payload.get("text") or "").strip()
             if text:
+                app_v3.logger.info("aqua_stt_ok provider=groq bytes=%s mimetype=%s", len(audio), mimetype)
                 return jsonify({"text": text, "provider": "groq"})
             provider_errors.append("groq_empty")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")[:300]
+            detail = exc.read().decode(errors="replace")[:500]
             provider_errors.append(f"groq_{exc.code}")
             app_v3.logger.warning("aqua_stt_groq_failed status=%s detail=%s", exc.code, detail)
         except Exception as exc:
             provider_errors.append("groq_network")
-            app_v3.logger.warning("aqua_stt_groq_failed detail=%s", str(exc)[:300])
+            app_v3.logger.warning("aqua_stt_groq_failed detail=%s", str(exc)[:500])
 
-    # Keep ElevenLabs as a secondary provider when credits are available again.
     if eleven_key:
         try:
             payload = _provider_post(
@@ -92,22 +97,22 @@ def aqua_transcribe_runtime():
             )
             text = str(payload.get("text") or "").strip()
             if text:
+                app_v3.logger.info("aqua_stt_ok provider=elevenlabs bytes=%s mimetype=%s", len(audio), mimetype)
                 return jsonify({"text": text, "provider": "elevenlabs"})
             provider_errors.append("eleven_empty")
         except urllib.error.HTTPError as exc:
-            detail = exc.read().decode(errors="replace")[:300]
+            detail = exc.read().decode(errors="replace")[:500]
             provider_errors.append(f"eleven_{exc.code}")
             app_v3.logger.warning("aqua_stt_eleven_failed status=%s detail=%s", exc.code, detail)
         except Exception as exc:
             provider_errors.append("eleven_network")
-            app_v3.logger.warning("aqua_stt_eleven_failed detail=%s", str(exc)[:300])
+            app_v3.logger.warning("aqua_stt_eleven_failed detail=%s", str(exc)[:500])
 
     if not groq_key and not eleven_key:
         return jsonify({"error": "برای تبدیل ویس، کلید Groq یا ElevenLabs تنظیم نشده است"}), 409
-    return jsonify({"error": "تبدیل ویس به متن موقتاً در دسترس نیست", "providers": provider_errors}), 502
+    return jsonify({"error": "تبدیل ویس به متن انجام نشد", "providers": provider_errors}), 502
 
 
-# Reuse the existing Flask URL rule while replacing only its view function.
 app_v3.app.view_functions["aqua_transcribe"] = aqua_transcribe_runtime
 
 
@@ -122,18 +127,86 @@ VOICE_HOTFIX_JS = r"""
   document.head.appendChild(st);
  };
  addStyle();
+ const getVoices=async()=>{
+  if(!window.speechSynthesis)return[];
+  let voices=window.speechSynthesis.getVoices?.()||[];
+  if(voices.length)return voices;
+  await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;resolve()};try{window.speechSynthesis.addEventListener('voiceschanged',finish,{once:true})}catch{}setTimeout(finish,650)});
+  return window.speechSynthesis.getVoices?.()||[];
+ };
  window.app=function(){
   const s=previous();
+
+  s.stopAquaSpeech=function(){
+   try{if(this.aquaPlayer){this.aquaPlayer.pause();this.aquaPlayer.removeAttribute('src');this.aquaPlayer.load()}}catch{}
+   try{if(this.aquaAudio){this.aquaAudio.pause();this.aquaAudio=null}}catch{}
+   try{if(this.aquaAudioSource){this.aquaAudioSource.stop();this.aquaAudioSource.disconnect();this.aquaAudioSource=null}}catch{}
+   try{window.speechSynthesis?.cancel?.()}catch{}
+   this.aquaSpeaking=false;
+  };
+
+  s.speakAqua=async function(text){
+   text=String(text||'').trim();
+   if(!text||this.aquaSpeaking)return false;
+   let url=null,serverError=null;
+   try{
+    const headers={'Content-Type':'application/json'},csrf=this.cookie?.('aquagold_csrf');if(csrf)headers['X-CSRF-Token']=csrf;
+    const response=await fetch('/api/aqua-ai/speak',{method:'POST',headers,credentials:'same-origin',cache:'no-store',body:JSON.stringify({text})});
+    if(!response.ok){let data={};try{data=await response.json()}catch{}throw Error(data.error||'صدای ElevenLabs آماده نشد')}
+    const blob=await response.blob();if(!blob.size)throw Error('فایل صدای خالی دریافت شد');
+    url=URL.createObjectURL(blob);
+    let a=this.aquaPlayer;
+    if(!a){a=new Audio();a.playsInline=true;a.preload='auto';this.aquaPlayer=a}
+    a.pause();a.src=url;a.muted=false;a.volume=1;a.currentTime=0;a.load();
+    await new Promise((resolve,reject)=>{
+     let started=false;
+     a.onplaying=()=>{started=true;this.aquaSpeaking=true};
+     a.onended=()=>{this.aquaSpeaking=false;resolve()};
+     a.onerror=()=>{this.aquaSpeaking=false;reject(Error('پخش صدای آریا روی آیفون ناموفق بود'))};
+     const p=a.play();if(p?.catch)p.catch(e=>{this.aquaSpeaking=false;reject(e)});
+     setTimeout(()=>{if(!started&&a.paused){this.aquaSpeaking=false;reject(Error('پخش صدا شروع نشد'))}},2500);
+    });
+    return true;
+   }catch(e){serverError=e;console.warn('Aqua server TTS unavailable; using iPhone speech',e)}finally{if(url)setTimeout(()=>URL.revokeObjectURL(url),1500)}
+
+   try{
+    if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)throw Error('صدای داخلی آیفون در دسترس نیست');
+    window.speechSynthesis.cancel();
+    const voices=await getVoices();
+    const utter=new SpeechSynthesisUtterance(text);
+    utter.lang='fa-IR';utter.rate=.94;utter.pitch=1;utter.volume=1;
+    const fa=voices.find(v=>/^fa(?:-|_)/i.test(String(v.lang||'')))||voices.find(v=>/^ar(?:-|_)/i.test(String(v.lang||'')));
+    if(fa)utter.voice=fa;
+    await new Promise((resolve,reject)=>{
+     let started=false,finished=false;
+     const done=(ok,err)=>{if(finished)return;finished=true;this.aquaSpeaking=false;ok?resolve():reject(err||Error('پخش صدای داخلی ناموفق بود'))};
+     utter.onstart=()=>{started=true;this.aquaSpeaking=true};
+     utter.onend=()=>done(true);
+     utter.onerror=e=>done(false,Error(e?.error||'speech synthesis failed'));
+     window.speechSynthesis.speak(utter);
+     setTimeout(()=>{if(!started)done(false,Error('صدای داخلی آیفون شروع نشد'))},3000);
+    });
+    return true;
+   }catch(fallbackError){
+    console.warn('Aqua iPhone speech fallback failed',fallbackError);
+    this.aquaSpeaking=false;
+    this.toast?.(serverError?.message||fallbackError?.message||'پخش صدای آریا ناموفق بود','error');
+    return false;
+   }
+  };
+
   s.toggleAquaRecording=async function(){
    if(this.aquaRecording){
+    try{this.aquaRecorder?.requestData?.()}catch{}
     try{this.aquaRecorder?.stop()}catch(e){this.aquaRecording=false;this.toast?.(e?.message||'توقف ضبط انجام نشد','error')}
     return;
    }
-   if(this.aquaTranscribing||this.aquaBusy)return;
+   if(this.aquaTranscribing||this.aquaBusy||this.aquaVoiceSending||this.aquaVoiceSubmitActive)return;
    this.stopAquaSpeech?.();
    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){this.toast?.('ضبط صدا روی این مرورگر پشتیبانی نمی‌شود','error');return}
    let stream=null;
    try{
+    try{await this.primeAquaAudio?.()}catch{}
     stream=await navigator.mediaDevices.getUserMedia({audio:true});
     const rec=new MediaRecorder(stream);
     this.aquaChunks=[];this.aquaRecorder=rec;this.aquaVoiceSending=false;this.aquaVoiceSubmitActive=false;
@@ -146,6 +219,7 @@ VOICE_HOTFIX_JS = r"""
      if(!chunks.length){this.toast?.('صدایی ثبت نشد؛ دوباره امتحان کن','error');return}
      const type=rec.mimeType||chunks[0]?.type||'audio/webm';
      const blob=new Blob(chunks,{type});
+     if(blob.size<256){this.toast?.('ویس خیلی کوتاه بود؛ دوباره امتحان کن','error');return}
      const ext=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':type.includes('wav')?'wav':'webm';
      const form=new FormData();form.append('audio',blob,'aqua.'+ext);
      this.aquaTranscribing=true;this.aquaVoiceSending=true;
@@ -155,7 +229,8 @@ VOICE_HOTFIX_JS = r"""
       let data={};try{data=await response.json()}catch{}
       if(!response.ok)throw Error(data.error||'تبدیل ویس به متن انجام نشد');
       const spoken=String(data.text||'').trim();if(!spoken)throw Error('حرفی از ویس تشخیص داده نشد');
-      this.aquaTranscribing=false;this.aquaVoiceSending=false;
+      this.aquaInput=spoken;
+      this.aquaTranscribing=false;this.aquaVoiceSending=false;this.aquaVoiceSubmitActive=true;
       const sent=await this.submitAquaText(spoken,'voice');
       this.aquaInput=sent?'':spoken;
       if(!sent)this.toast?.('متن ویس حفظ شد؛ ارسال خودکار انجام نشد','info');
@@ -163,7 +238,7 @@ VOICE_HOTFIX_JS = r"""
       this.aquaVoiceSending=false;this.toast?.(e?.message||'ویس پردازش نشد','error');
      }finally{this.aquaTranscribing=false;this.aquaVoiceSending=false;this.aquaVoiceSubmitActive=false}
     };
-    rec.start();this.aquaRecording=true;
+    rec.start(250);this.aquaRecording=true;
     this.toast?.('آریا گوش می‌دهد؛ بعد از پایان صحبت دوباره میکروفن را بزن','info');
    }catch(e){
     try{stream?.getTracks?.().forEach(t=>t.stop())}catch{}
@@ -188,15 +263,7 @@ def aqua_voice_runtime_cache_bust(response):
         path = request.path
         if path in {"/aqua-ai.js", "/aqua-ai.css", "/aqua-voice-runtime-hotfix.js"}:
             response.headers["Cache-Control"] = "no-store, max-age=0"
-        if path in {"/", "/index.html"} and response.mimetype == "text/html":
-            body = response.get_data(as_text=True)
-            marker = '<script src="/aqua-ai.js?v=20260827-v76"></script>'
-            injection = marker + '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-voice1"></script>'
-            if marker in body and "aqua-voice-runtime-hotfix.js" not in body:
-                body = body.replace(marker, injection, 1)
-                response.set_data(body)
-                response.headers["Content-Length"] = str(len(response.get_data()))
-            response.headers["Cache-Control"] = "no-store, max-age=0"
+        response.headers.setdefault("Pragma", "no-cache")
     except Exception as exc:
         app_v3.logger.warning("aqua_voice_cache_bust_failed detail=%s", str(exc)[:200])
     return response
