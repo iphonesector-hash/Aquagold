@@ -8,11 +8,9 @@ import app_v3
 def inject_aqua_voice_hotfix(response):
     try:
         if request.path in {"/", "/index.html"} and response.mimetype == "text/html":
-            # send_file/send_from_directory responses are direct-passthrough by default;
-            # disable it before reading/mutating the HTML body.
             response.direct_passthrough = False
             body = response.get_data(as_text=True)
-            tag = '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-voice3"></script>'
+            tag = '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-voice4"></script>'
             if "aqua-voice-runtime-hotfix.js" not in body:
                 pos = body.lower().find("</head>")
                 if pos >= 0:
