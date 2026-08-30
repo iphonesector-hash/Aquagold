@@ -8,10 +8,10 @@ def src(name):
 
 
 def test_final_ui_layer_is_injected_after_aria():
-    py = src("aria_v8.py")
-    assert '/aria-v8.js?v=20260828-v8' in py
-    assert '/ui-detail-v8.js?v=20260828-v8' in py
-    assert py.index('/aria-v8.js') < py.index('/ui-detail-v8.js')
+    index = src("index.html")
+    assert '/aria-v8.js?v=' in index
+    assert '/ui-detail-v8.js?v=' in index
+    assert index.index('/aria-v8.js') < index.index('/ui-detail-v8.js')
 
 
 def test_dashboard_actions_are_one_blue_family_and_daily_title_is_final():

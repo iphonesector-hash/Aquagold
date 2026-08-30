@@ -11,7 +11,8 @@ def test_visual_layer_is_passive():
     assert "pointer-events:none!important" in v and "SECTOR" in v
 def test_notification_badge_can_be_read():
     e=src("ui-v4-enhancements.js"); i=src("index.html")
-    assert "notificationBadgeCount" in e and "aq_notifications_seen" in e
+    assert "notificationBadgeCount" in e and "/ops/notifications" in e
+    assert "aq_notifications_seen" not in e
     assert '@click="openNotifications"' in i
 def test_cache_busts_first_party_runtime():
     i=src("index.html")

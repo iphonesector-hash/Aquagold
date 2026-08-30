@@ -16,12 +16,10 @@ from flask import jsonify, request
 
 import app_v3
 from aquagold_validation import ValidationError, text as valid_text
+from smart_intake import parse_intake
 
 BALE_API = "https://tapi.bale.ai/bot{token}/{method}"
 KEYWORDS = ("فیلتر", "دستگاه", "ساید", "یخچال")
-PHONE_RE = re.compile(r"(?:\+98|0098|0)?9[0-9۰-۹٠-٩]{9}")
-PERSIAN_WORD_RE = re.compile(r"[آ-ی]{2,}")
-DIGIT_TRANS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
 def _fernet():
@@ -90,7 +88,11 @@ def _bale_call(token, method, payload=None, timeout=15):
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             raw = response.read().decode(errors="replace")
-            return json.loads(raw) if raw else {"ok": True}
+            result = json.loads(raw) if raw else {"ok": True}
+            if result.get("ok") is False:
+                detail = str(result.get("description") or result.get("message") or "پاسخ ناموفق")[:300]
+                raise RuntimeError(f"بله عملیات را نپذیرفت: {detail}")
+            return result
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:500]
         raise RuntimeError(f"بله پاسخ نداد ({exc.code}): {detail}") from exc
@@ -104,67 +106,23 @@ def _normalize_text(value):
     return re.sub(r"\s+", " ", str(value or "").replace("\u200c", " ")).strip()
 
 
-def _normalize_phone(value):
-    return app_v3.normalize_phone(str(value or "").translate(DIGIT_TRANS))
-
-
 def _extract_job(text):
     raw = str(text or "").strip()
     flat = _normalize_text(raw)
-    phone_match = PHONE_RE.search(raw)
-    phone = _normalize_phone(phone_match.group(0)) if phone_match else ""
+    parsed = parse_intake(raw)
+    phone = (parsed.get("phones") or [""])[0]
     keyword_hits = [word for word in KEYWORDS if word in flat]
-
-    cleaned_for_name = PHONE_RE.sub(" ", flat)
-    for junk in ("شماره", "تلفن", "موبایل", "آدرس", "کار", "سرویس", "تعویض", "نصب", "بررسی") + KEYWORDS:
-        cleaned_for_name = cleaned_for_name.replace(junk, " ")
-    words = [w for w in PERSIAN_WORD_RE.findall(cleaned_for_name) if len(w) >= 2]
-    has_name_and_phone = bool(phone and words)
-    if not keyword_hits and not has_name_and_phone:
+    if not phone and not keyword_hits:
         return None
-
-    lines = [_normalize_text(x) for x in raw.splitlines() if _normalize_text(x)]
-    customer_name = ""
-    if phone_match:
-        for line in lines:
-            if PHONE_RE.search(line):
-                candidate = PHONE_RE.sub("", line)
-                candidate = re.sub(r"(?:شماره|تلفن|موبایل|آقا|خانم|مشتری)[:：]?", " ", candidate)
-                candidate = _normalize_text(candidate)
-                if PERSIAN_WORD_RE.search(candidate):
-                    customer_name = candidate[:120]
-                    break
-    if not customer_name:
-        for line in lines:
-            if any(k in line for k in KEYWORDS):
-                continue
-            candidate = PHONE_RE.sub("", line)
-            if len(PERSIAN_WORD_RE.findall(candidate)) >= 1:
-                customer_name = _normalize_text(candidate)[:120]
-                break
-
-    address = ""
-    address_markers = ("خیابان", "خ ", "کوچه", "پلاک", "واحد", "شهرک", "بلوار", "میدان", "اتوبان", "بزرگراه", "تهران", "کرج")
-    address_lines = [line for line in lines if any(marker in line for marker in address_markers)]
-    if address_lines:
-        address = "، ".join(address_lines)[:1000]
-
-    if "یخچال" in flat or "ساید" in flat:
-        job_type = "یخچال/ساید"
-    elif "فیلتر" in flat:
-        job_type = "فیلتر"
-    elif "دستگاه" in flat:
-        job_type = "دستگاه"
-    else:
-        job_type = "سرویس"
-
     return {
-        "customer_name": customer_name,
+        "customer_name": parsed.get("last_name") or "",
         "phone": phone,
-        "address": address,
-        "job_type": job_type,
+        "address": parsed.get("address") or "",
+        "job_type": parsed.get("service_type") or "سرویس",
+        "visitor_code": parsed.get("visitor_code"),
+        "time_text": parsed.get("time_text"),
         "matched_keywords": keyword_hits,
-        "rule": "keyword" if keyword_hits else "name_phone",
+        "rule": "smart-v8",
     }
 
 
@@ -234,6 +192,12 @@ def bale_webhook(secret):
         row = cur.fetchone()
     if row:
         _send_chat(settings, chat_id, "✅ کار در AquaGold ثبت شد", message_id)
+        try:
+            from operational_v8 import _send_push
+            label = parsed.get("customer_name") or parsed.get("phone") or "کار جدید"
+            _send_push("کار جدید بله", label, "/?open=bale-jobs", "bale-job")
+        except Exception as exc:
+            app_v3.logger.warning("bale_push_failed: %s", exc)
         return jsonify({"ok": True, "registered": True, "job_id": str(row["id"])})
     return jsonify({"ok": True, "duplicate": True})
 
@@ -322,64 +286,26 @@ def _get_locked_job(cur, job_id):
     return job
 
 
-def _ensure_customer(cur, job):
-    customer_id = job.get("customer_id") or _find_customer_by_phone(cur, job.get("phone"))
-    if customer_id:
-        return customer_id
-    name = _normalize_text(job.get("customer_name"))
-    phone = _normalize_phone(job.get("phone"))
-    if not name or not phone:
-        return None
-    cur.execute(
-        "insert into customers_v2(last_name,normalized_name,address,map_label,created_by) values(%s,%s,%s,%s,%s) returning id",
-        (name, app_v3.normalize_name(None, name), job.get("address") or None, name, str(request.current_user.get("user_id"))),
-    )
-    customer_id = cur.fetchone()["id"]
-    cur.execute("insert into customer_phones(customer_id,phone,is_primary) values(%s,%s,true) on conflict do nothing", (customer_id, phone))
-    return customer_id
-
-
 @app_v3.app.post("/api/bale/jobs/<job_id>/complete")
 @app_v3.roles_required("technician")
 def bale_job_complete(job_id):
-    data = request.get_json() or {}
-    received = app_v3.as_int(data.get("received_amount"), -1)
-    if received < 0:
-        raise ValidationError("مبلغ دریافتی را وارد کن")
-    with app_v3.get_db() as db, db.cursor() as cur:
-        job = _get_locked_job(cur, job_id)
-        customer_id = _ensure_customer(cur, job)
-        service_visit_id = None
-        if customer_id:
-            pct = app_v3.finance_percent(cur)
-            company = round(received * float(pct) / 100)
-            cur.execute(
-                """insert into service_visits(customer_id,registered_by,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,overpayment_amount,status,visited_at,raw_chat_input)
-                   values(%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0,'completed',now(),%s) returning id""",
-                (customer_id, str(request.current_user.get("user_id")), job.get("job_type") or "سرویس بله", job.get("raw_text"), received, received, received, pct, company, job.get("raw_text")),
-            )
-            service_visit_id = cur.fetchone()["id"]
-        cur.execute(
-            """update bale_jobs set status='completed',received_amount=%s,customer_id=coalesce(%s,customer_id),service_visit_id=%s,completed_at=now(),updated_at=now() where id=%s::uuid""",
-            (received, customer_id, service_visit_id, job_id),
-        )
-        app_v3.audit(cur, "bale_job", job_id, "complete", before={"status": job["status"]}, after={"received_amount": received, "service_visit_id": str(service_visit_id) if service_visit_id else None})
-    settings = _load_settings()
-    _send_chat(settings, job["chat_id"], f"✅ کار انجام شد و در AquaGold ثبت شد. مبلغ دریافتی: {received:,} تومان", job["message_id"])
-    return jsonify({"ok": True, "service_visit_id": str(service_visit_id) if service_visit_id else None})
+    return jsonify({
+        "error": "این مسیر سرویس مستقل نمی‌سازد؛ کار را با «انجام شد ← ثبت هوشمند» تکمیل کن",
+        "code": "SMART_INTAKE_REQUIRED",
+    }), 409
 
 
 @app_v3.app.post("/api/bale/jobs/<job_id>/finalize")
 @app_v3.roles_required("technician")
 def bale_job_finalize(job_id):
+    data = request.get_json(silent=True) or {}
+    service_visit_id = app_v3.valid_uuid(data.get("service_visit_id"), "شناسه سرویس", required=True)
     with app_v3.get_db() as db, db.cursor() as cur:
         job = _get_locked_job(cur, job_id)
         cur.execute(
             """select id,customer_id,received_amount from service_visits
-               where raw_chat_input=%s and registered_by=%s
-                 and created_at>=now()-interval '20 minutes'
-               order by created_at desc limit 1""",
-            (job.get("raw_text"), str(request.current_user.get("user_id"))),
+               where id=%s::uuid and raw_chat_input=%s and registered_by=%s""",
+            (service_visit_id, job.get("raw_text"), str(request.current_user.get("user_id"))),
         )
         service = cur.fetchone()
         if not service:

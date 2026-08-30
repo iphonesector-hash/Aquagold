@@ -70,14 +70,15 @@ def test_lazy_modules_wait_for_authenticated_dom_before_marking_mounted():
     assert enhancement_guard < enhancement_flag
 
 
-def test_v8_service_worker_is_network_only_push_capable_and_clears_stale_caches():
+def test_v8_service_worker_caches_shell_but_never_api_and_handles_push():
     worker = source("sw.js")
-    assert "aquagold-network-only-recovery" in worker
+    assert "aquagold-v8-rc2-shell" in worker
     assert "caches.keys()" in worker and "caches.delete" in worker
-    assert "respondWith(fetch(event.request))" in worker
+    assert "url.pathname.startsWith('/api/')" in worker
+    assert "cache.addAll(SHELL)" in worker
+    assert "event.request.mode==='navigate'" in worker
     assert "showNotification" in worker
     assert "notificationclick" in worker
-    assert "cache.add" not in worker
 
 
 def test_login_bootstrap_is_deterministic_and_session_verified():
@@ -100,21 +101,62 @@ def test_login_copy_is_present_before_alpine_reveals_page():
     alpine = index.index("/vendor/alpinejs-3.14.9.min.js")
     copy = index.index("پنل ورودی اکوا گلد نوشته شده توسط peyman.sector")
     assert copy > alpine
-    assert "AquaGold CRM v7." in index
-    assert "نسخه v7." in index
+    assert "AquaGold CRM v8" in index
+    assert "نسخه v8" in index
 
 
-def test_bale_modal_backdrops_are_fail_safe_hidden():
+def test_bale_uses_only_smart_intake_completion_and_cancel_modal_is_hidden():
     bale = source("bale-ui.js")
-    assert 'x-cloak x-show="baleCompleteJob"' in bale
+    assert "sendBaleToSmart(j)" in bale
+    assert "baleCompleteJob" not in bale
+    assert "'/complete'" not in bale
     assert 'x-cloak x-show="baleCancelJob"' in bale
-    assert bale.count('style="display:none"') >= 2
+    assert 'style="display:none"' in bale
 
 
-def test_operational_v8_hides_duplicate_floating_actions_and_excel_ui():
+def test_operational_v8_removes_duplicate_floating_actions_and_excel_ui():
     finalizer = source("ui-v4-finalize.js")
-    assert ".aq-float{display:none!important}" in finalizer
-    assert "ثبت با صدا" in finalizer
-    assert "ثبت هوشمند" in finalizer
-    assert "export.xlsx" in finalizer
+    enhancements = source("ui-v4-enhancements.js")
+    index = source("index.html")
+    assert "aq-float" not in enhancements
+    assert "downloadExcel" not in index
+    assert ">Excel<" not in index
     assert "company-share" in finalizer
+
+
+def test_runtime_has_no_legacy_monkeypatch_or_excel_export_layer():
+    runtime = "\n".join(
+        source(name)
+        for name in ("app.py", "app_v3.py", "app_extras.py", "operational_v8.py", "aqua_ai.py", "bale_bridge.py")
+    )
+    assert not (ROOT / "app_fixes.py").exists()
+    assert "app.view_functions" not in runtime
+    assert "aqua_ai._groq_answer =" not in runtime
+    assert "bale_bridge._extract_job =" not in runtime
+    assert "/api/export.xlsx" not in runtime
+    assert "openpyxl" not in runtime
+
+
+def test_create_flows_lock_double_taps_and_voice_transcription_is_idempotent():
+    base = source("ui-v3-base.js")
+    commerce = source("ui-commerce.js")
+    aria = source("aria-v8.js")
+    timeline = source("ui-v4-finalize.js")
+    for signature in (
+        "async saveCustomer(){if(this.busy)return",
+        "async createService(){if(this.busy)return",
+        "async createExpense(){if(this.busy)return",
+        "async createSettlement(){if(this.busy)return",
+    ):
+        assert signature in base
+    assert "s.saveProduct=async function(){if(this.busy)return" in commerce
+    assert "s.saveInvoice=async function(){if(this.busy)return" in commerce
+    assert "'Idempotency-Key':crypto.randomUUID()" in aria
+    assert "'Idempotency-Key':crypto.randomUUID()" in timeline
+
+
+def test_tehran_date_has_fixed_rtl_order_and_separate_live_clock():
+    finalizer = source("ui-v4-finalize.js")
+    assert "`${parts.weekday} / ${day} / ${parts.month} / ${parts.year}`" in finalizer
+    assert 'dir="rtl" style="unicode-bidi:isolate" x-text="tehranDate"' in finalizer
+    assert 'dir="ltr" x-text="tehranTime"' in finalizer

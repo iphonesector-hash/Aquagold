@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Response, jsonify, request
@@ -26,13 +27,14 @@ DEFAULTS = {
     "brain_model": "groq/compound",
     "voice_provider": "elevenlabs",
     "voice_id": "JBFqnCBsd6RMkjVDRZzb",
-    "tts_model": "eleven_v3",
+    "tts_model": "eleven_v3_conversational",
     "stt_model": "scribe_v2",
-    "auto_speak": False,
+    "auto_speak": True,
 }
 SECRET_FIELDS = {"groq_api_key", "elevenlabs_api_key"}
 SAFE_FIELDS = set(DEFAULTS)
 MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,100}$")
+LIVE_HINTS = ("الان", "لحظه", "قیمت", "نرخ", "دلار", "طلا", "ارز", "بورس", "خبر", "هوا", "آب و هوا", "جدیدترین", "آخرین", "جستجو", "جست‌وجو", "سرچ", "اینترنت", "وب")
 
 
 def _fernet():
@@ -215,6 +217,11 @@ def _workspace_context(cur):
     return {"customers": customers, "products": products, "today_sales": sales, "today_received": received, "hourly": points[-12:]}
 
 
+def _fa_money(value):
+    grouped = f"{int(value or 0):,}".replace(",", "،")
+    return grouped.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")) + " تومان"
+
+
 def _groq_answer(settings, text, history, context):
     key = settings.get("groq_api_key")
     if not key:
@@ -242,6 +249,21 @@ def _groq_answer(settings, text, history, context):
     messages.append({"role": "user", "content": str(text)[:1800]})
     endpoint = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}"}
+    if any(hint in str(text) for hint in LIVE_HINTS):
+        now = datetime.now(ZoneInfo("Asia/Tehran")).strftime("%Y-%m-%d %H:%M Asia/Tehran")
+        live_messages = [
+            {"role": "system", "content": "تو آریا هستی. برای این پرسش لحظه‌ای حتماً از جست‌وجوی وب داخلی مدل استفاده کن؛ اطلاعات قدیمی یا حدسی نده و زمان داده را کوتاه بگو. زمان فعلی: " + now},
+            {"role": "user", "content": str(text)[:900]},
+        ]
+        for model in ("groq/compound-mini", "groq/compound"):
+            try:
+                data = _post_json(endpoint, {"model": model, "messages": live_messages, "temperature": 0.15}, headers, timeout=45)
+                answer = data.get("choices", [{}])[0].get("message", {}).get("content")
+                if answer:
+                    return answer
+            except Exception as exc:
+                app_v3.logger.warning("aqua_live_search_failed model=%s detail=%s", model, str(exc)[:180])
+        return "الان نتوانستم دادهٔ زندهٔ وب را دریافت کنم؛ برای جلوگیری از نمایش اطلاعات قدیمی، عدد یا خبر حدسی نمی‌دهم. کمی بعد دوباره امتحان کن."
     payload = {"model": settings.get("brain_model") or "groq/compound", "messages": messages, "temperature": 0.2}
     try:
         data = _post_json(endpoint, payload, headers)
@@ -260,7 +282,7 @@ def _groq_answer(settings, text, history, context):
         try:
             data = _post_json(endpoint, {"model": "groq/compound-mini", "messages": retry_messages, "temperature": 0.2}, headers)
         except RuntimeError:
-            data = _post_json(endpoint, {"model": "llama-3.3-70b-versatile", "messages": retry_messages, "temperature": 0.2}, headers)
+            data = _post_json(endpoint, {"model": "openai/gpt-oss-120b", "messages": retry_messages, "temperature": 0.2}, headers)
     return data["choices"][0]["message"]["content"]
 
 
@@ -323,7 +345,7 @@ def aqua_chat():
 
         if "امروز" in text and any(word in text for word in ("فروش", "نمودار", "درآمد")):
             points, sales, received = _today_sales(cur)
-            return jsonify({"answer": f"فروش امروز {sales:,} تومان و دریافتی {received:,} تومان است.", "chart": {"title": "فروش امروز", "points": points}, "action": {"type": "open_page", "page": "finance"}})
+            return jsonify({"answer": f"فروش امروز {_fa_money(sales)} و دریافتی {_fa_money(received)} است.", "chart": {"title": "فروش امروز", "points": points}, "action": {"type": "open_page", "page": "finance"}})
 
         draft = _customer_draft(text)
         if draft is not None:
@@ -341,7 +363,8 @@ def aqua_chat():
     try:
         answer = _groq_answer(_load_settings(), text, data.get("history"), context)
     except RuntimeError as exc:
-        answer = str(exc)
+        app_v3.logger.warning("aqua_provider_unavailable: %s", str(exc)[:240])
+        answer = "فعلاً ارتباط آریا با سرویس پاسخ‌گویی برقرار نیست؛ چند لحظه بعد دوباره امتحان کن."
     return jsonify({"answer": answer})
 
 
@@ -422,10 +445,13 @@ def aqua_speak():
     if not key:
         return jsonify({"error": "کلید ElevenLabs در تنظیمات وارد نشده است"}), 409
     voice_id = settings.get("voice_id") or DEFAULTS["voice_id"]
-    requested_model = settings.get("tts_model") or "eleven_v3"
-    models = [requested_model]
-    if requested_model != "eleven_multilingual_v2":
-        models.append("eleven_multilingual_v2")
+    requested_model = settings.get("tts_model") or "eleven_v3_conversational"
+    # Existing v8 installations saved eleven_v3 as their default. Prefer the
+    # realtime conversational sibling for Persian AI replies, then fall back to
+    # the expressive v3 model without falling back to a model lacking Persian.
+    models = ["eleven_v3_conversational", "eleven_v3"] if requested_model == "eleven_v3" else [requested_model]
+    if "eleven_v3" not in models:
+        models.append("eleven_v3")
     last_error = None
     for model_id in models:
         for attempt in range(3):
@@ -445,7 +471,7 @@ def aqua_speak():
                 detail = exc.read().decode(errors="replace")[:500]
                 last_error = f"HTTP {exc.code}: {detail}"
                 app_v3.logger.warning("aqua_tts_failed model=%s attempt=%s status=%s detail=%s", model_id, attempt + 1, exc.code, detail)
-                if exc.code not in {408, 409, 422, 429, 500, 502, 503, 504}:
+                if exc.code not in {408, 429, 500, 502, 503, 504}:
                     break
             except urllib.error.URLError as exc:
                 last_error = str(exc.reason)[:300]

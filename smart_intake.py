@@ -1,10 +1,17 @@
 import re
 from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 PERSIAN_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 PHONE_RE = re.compile(r"(?<!\d)(?:\+98|0098|98|0)?9\d{9}(?!\d)")
 WEEKDAYS = ("شنبه","یکشنبه","دوشنبه","سه شنبه","سه‌شنبه","چهارشنبه","پنجشنبه","جمعه")
+TEHRAN = ZoneInfo("Asia/Tehran")
+WEEKDAY_INDEX = {
+    "شنبه": 5, "یکشنبه": 6, "دوشنبه": 0, "سه شنبه": 1, "سه‌شنبه": 1,
+    "چهارشنبه": 2, "پنجشنبه": 3, "جمعه": 4,
+}
 TIME_WORDS = WEEKDAYS + ("الی","ساعت","صبح","ظهر","عصر","شب","فردا","امروز")
 SERVICE_MAP = {
     "ساید": "یخچال/ساید", "یخچال": "یخچال/ساید", "فریزر": "یخچال/ساید",
@@ -42,6 +49,35 @@ def parse_money(value: str) -> Optional[int]:
 def _is_time(line: str) -> bool:
     if any(w in line for w in TIME_WORDS): return True
     return bool(re.fullmatch(r"\d{1,2}(?::\d{2})?\s*(?:تا|الی|-)\s*\d{1,2}(?::\d{2})?", line))
+
+
+def resolve_tehran_visit_window(value: str, now: Optional[datetime] = None) -> tuple[Optional[str], Optional[str]]:
+    """Resolve a Persian weekday/time range to the closest past-or-today Tehran window."""
+    text = normalize_spaces(normalize_digits(value or ""))
+    if not text:
+        return None, None
+    current = now or datetime.now(TEHRAN)
+    current = current.replace(tzinfo=TEHRAN) if current.tzinfo is None else current.astimezone(TEHRAN)
+    target = next((WEEKDAY_INDEX[name] for name in sorted(WEEKDAY_INDEX, key=len, reverse=True) if name in text), current.weekday())
+    day = (current - timedelta(days=(current.weekday() - target) % 7)).date()
+    match = re.search(r"(?<!\d)(\d{1,2})(?::(\d{2}))?\s*(?:تا|الی|-)\s*(\d{1,2})(?::(\d{2}))?", text)
+    if not match:
+        match = re.search(r"(?:ساعت\s*)?(\d{1,2})(?::(\d{2}))?", text)
+    if not match:
+        return None, None
+    start_hour, start_minute = int(match.group(1)), int(match.group(2) or 0)
+    if start_hour > 23 or start_minute > 59:
+        return None, None
+    start = datetime(day.year, day.month, day.day, start_hour, start_minute, tzinfo=TEHRAN)
+    if match.lastindex and match.lastindex >= 3 and match.group(3) is not None:
+        end_hour, end_minute = int(match.group(3)), int(match.group(4) or 0)
+        if end_hour > 23 or end_minute > 59:
+            return start.isoformat(), None
+        end = datetime(day.year, day.month, day.day, end_hour, end_minute, tzinfo=TEHRAN)
+        if end <= start:
+            end += timedelta(days=1)
+        return start.isoformat(), end.isoformat()
+    return start.isoformat(), None
 
 
 def _service(line: str):
@@ -89,6 +125,8 @@ class IntakeResult:
     description: Optional[str] = None
     amount: Optional[int] = None
     time_text: Optional[str] = None
+    visited_at: Optional[str] = None
+    scheduled_until: Optional[str] = None
     raw_text: Optional[str] = None
     parser: str = "local-v8"
 
@@ -107,6 +145,7 @@ def parse_intake(text: str) -> dict:
 
     time_idx = next((i for i,l in enumerate(lines) if _is_time(l)), None)
     time_text = lines[time_idx] if time_idx is not None else None
+    visited_at, scheduled_until = resolve_tehran_visit_window(time_text)
 
     service_idx, service_type, service_line = None, None, None
     for i, line in enumerate(lines):
@@ -161,5 +200,7 @@ def parse_intake(text: str) -> dict:
         description="، ".join(description_bits) or service_line,
         amount=amount,
         time_text=time_text,
+        visited_at=visited_at,
+        scheduled_until=scheduled_until,
         raw_text=raw,
     ).to_dict()

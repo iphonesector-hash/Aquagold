@@ -4,6 +4,5 @@ flask-limiter==4.1.1
 Werkzeug==3.1.8
 gunicorn==26.2.0
 psycopg[binary]==3.3.4
-openpyxl==3.1.5
 cryptography==50.0.0
 pywebpush==2.4.0

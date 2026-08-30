@@ -2,7 +2,6 @@ from datetime import timedelta
 
 import pytest
 
-from app_extras import _excel_value
 from aquagold_validation import ValidationError, phone, timestamp
 
 
@@ -26,8 +25,3 @@ def test_bad_phone_is_rejected():
 def test_naive_browser_timestamp_is_interpreted_as_tehran_time():
     parsed = timestamp("2026-08-25T15:30", "زمان")
     assert parsed.utcoffset() == timedelta(hours=3, minutes=30)
-
-
-@pytest.mark.parametrize("value", ["=HYPERLINK(\"https://invalid\")", "+1+1", "-2+3", "@SUM(A1:A2)"])
-def test_excel_formula_prefixes_are_neutralized(value):
-    assert _excel_value(value).startswith("'")

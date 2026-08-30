@@ -15,6 +15,6 @@ def test_smart_intake_ai_uses_current_production_groq_model():
 
 
 def test_live_questions_route_to_compound_mini_first():
-    ops = src("operational_v8.py")
-    assert 'for model in ("groq/compound-mini", "groq/compound")' in ops
-    assert "LIVE_HINTS" in ops and "دلار" in ops and "امروز" in ops
+    ai = src("aqua_ai.py")
+    assert 'for model in ("groq/compound-mini", "groq/compound")' in ai
+    assert "LIVE_HINTS" in ai and "دلار" in ai and "قیمت" in ai

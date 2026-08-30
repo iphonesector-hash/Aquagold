@@ -1,4 +1,7 @@
-from smart_intake import parse_intake
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from smart_intake import parse_intake, resolve_tehran_visit_window
 
 
 def test_bale_standard_format():
@@ -16,6 +19,14 @@ def test_bale_standard_format():
     assert 'کرج فردیس' in p['address']
     assert 'پ 15 ویلایی' in p['address']
     assert p['time_text'] == 'پنجشنبه 19 الی 20'
+    assert p['visited_at'] and p['scheduled_until']
+
+
+def test_visit_window_uses_closest_past_or_today_tehran_weekday():
+    now = datetime(2026, 8, 28, 12, tzinfo=ZoneInfo("Asia/Tehran"))  # Friday
+    start, end = resolve_tehran_visit_window("پنجشنبه ۱۹ الی ۲۰", now=now)
+    assert start == "2026-08-27T19:00:00+03:30"
+    assert end == "2026-08-27T20:00:00+03:30"
 
 
 def test_device_format_and_address_continuation():

@@ -5,6 +5,7 @@ import base64
 import gzip
 import io
 import json
+import os
 import re
 import secrets
 import urllib.error
@@ -12,17 +13,18 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+
 from flask import Response, jsonify, request, send_file
 
 import app_v3
 import aqua_ai
 import bale_bridge
-from smart_intake import parse_intake
 from aquagold_validation import ValidationError, text as valid_text
 
 app = app_v3.app
 TEHRAN = ZoneInfo("Asia/Tehran")
-LIVE_HINTS = ("امروز", "الان", "لحظه", "قیمت", "نرخ", "دلار", "طلا", "ارز", "بورس", "خبر", "هوا", "آب و هوا", "جدیدترین", "آخرین", "جستجو", "جست‌وجو", "سرچ", "اینترنت", "وب")
 CANCEL_REASONS = ("مشتری منصرف شد", "قیمت", "عدم حضور", "زمان نامناسب", "آدرس اشتباه", "پاسخ نداد", "سپرد به شخص دیگر", "سایر")
 
 
@@ -138,13 +140,18 @@ def _bale_document(token, chat_id, filename, payload, caption=""):
         method="POST",
     )
     with urllib.request.urlopen(req, timeout=45) as response:
-        return json.loads(response.read().decode(errors="replace") or "{}")
+        result = json.loads(response.read().decode(errors="replace") or "{}")
+        if result.get("ok") is False:
+            detail = str(result.get("description") or result.get("message") or "پاسخ ناموفق")[:300]
+            raise RuntimeError(f"بله فایل را نپذیرفت: {detail}")
+        return result
 
 
 def _backup_bytes():
     tables = [
-        "customers_v2", "customer_phones", "service_visits", "expenses", "company_settlements",
-        "bale_jobs", "products", "invoices", "invoice_items", "audit_log",
+        "customers_v2", "customer_phones", "service_visits", "service_items", "expenses",
+        "company_settlements", "products", "invoices", "invoice_items", "inventory",
+        "bale_jobs", "customer_notes", "service_media", "audit_log",
     ]
     out = {"format": "AquaGold Backup v8", "created_at": datetime.now(timezone.utc).isoformat(), "tables": {}}
     with app_v3.get_db() as db, db.cursor() as cur:
@@ -155,6 +162,9 @@ def _backup_bytes():
             except Exception as exc:
                 db.rollback()
                 out["tables"][table] = {"error": str(exc)[:160]}
+        out["settings"] = {}
+        for key in ("finance", "admin_profile"):
+            out["settings"][key] = _setting(cur, key, {})
     raw = json.dumps(out, ensure_ascii=False, default=str, separators=(",", ":")).encode()
     return gzip.compress(raw, compresslevel=6)
 
@@ -166,7 +176,6 @@ def _send_push(title, body, url="/", tag="aquagold"):
         return 0
     sent = 0
     with app_v3.get_db() as db, db.cursor() as cur:
-        _ensure_push_schema(cur)
         vapid = _ensure_vapid(cur)
         cur.execute("select id,subscription from push_subscriptions where active=true")
         rows = cur.fetchall()
@@ -186,74 +195,14 @@ def _send_push(title, body, url="/", tag="aquagold"):
     return sent
 
 
-def _ensure_push_schema(cur):
-    cur.execute("""
-        create table if not exists push_subscriptions(
-          id bigserial primary key,
-          user_id text,
-          subscription jsonb not null,
-          created_at timestamptz not null default now(),
-          updated_at timestamptz not null default now(),
-          active boolean not null default true,
-          unique(subscription)
-        )
-    """)
-
-
-def _ensure_ops_schema():
-    try:
-        with app_v3.get_db() as db, db.cursor() as cur:
-            _ensure_push_schema(cur)
-            cur.execute("""
-              create table if not exists customer_notes(
-                id bigserial primary key, customer_id uuid not null references customers_v2(id) on delete cascade,
-                note_text text not null, note_type text not null default 'text', created_by text, created_at timestamptz not null default now()
-              )
-            """)
-            cur.execute("""
-              create table if not exists service_media(
-                id bigserial primary key, service_visit_id uuid not null references service_visits(id) on delete cascade,
-                kind text not null check(kind in ('before','after')), data_url text not null, created_by text, created_at timestamptz not null default now()
-              )
-            """)
-            cur.execute("""
-              create table if not exists ops_cron_runs(
-                run_key text primary key, run_at timestamptz not null default now(), result jsonb
-              )
-            """)
-            cur.execute("""
-              create or replace function aquagold_set_next_service_v8() returns trigger as $$
-              begin
-                if new.status='completed' and new.next_service_at is null then
-                  new.next_service_at := coalesce(new.visited_at,new.created_at,now()) + interval '6 months';
-                end if;
-                return new;
-              end;
-              $$ language plpgsql;
-            """)
-            cur.execute("drop trigger if exists trg_aquagold_set_next_service_v8 on service_visits")
-            cur.execute("""create trigger trg_aquagold_set_next_service_v8 before insert or update of status,visited_at,next_service_at
-                         on service_visits for each row execute function aquagold_set_next_service_v8()""")
-            cur.execute("""update service_visits
-                            set next_service_at=coalesce(visited_at,created_at,now()) + interval '6 months'
-                            where status='completed' and next_service_at is null""")
-    except Exception as exc:
-        app_v3.logger.warning("ops_schema_init_failed: %s", exc)
-
-
-_ensure_ops_schema()
-
-
 def _ensure_vapid(cur):
     data = _setting(cur, "web_push")
     private_pem = bale_bridge._decrypt(data.get("private_cipher"))
     public_key = data.get("public_key") or ""
-    if private_pem and public_key:
+    if private_pem and public_key and "-----BEGIN" not in private_pem:
         return {"private_pem": private_pem, "public_key": public_key}
-    from cryptography.hazmat.primitives import serialization
-    from cryptography.hazmat.primitives.asymmetric import ec
-    key = ec.generate_private_key(ec.SECP256R1())
-    private_pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()).decode()
+    key = serialization.load_pem_private_key(private_pem.encode(), password=None) if private_pem else ec.generate_private_key(ec.SECP256R1())
+    private_pem = base64.urlsafe_b64encode(key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())).rstrip(b"=").decode()
     numbers = key.public_key().public_numbers()
     raw = b"\x04" + numbers.x.to_bytes(32, "big") + numbers.y.to_bytes(32, "big")
     public_key = base64.urlsafe_b64encode(raw).rstrip(b"=").decode()
@@ -265,6 +214,7 @@ def _ensure_vapid(cur):
 @app_v3.roles_required("technician")
 def ops_company_share():
     clause, params = _range_clause()
+    settle_clause, settle_params = _range_clause("s.settled_at")
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute(f"""
             select (coalesce(v.visited_at,v.created_at) at time zone 'Asia/Tehran')::date day,
@@ -276,7 +226,15 @@ def ops_company_share():
             group by 1 order by 1 desc
         """, params)
         days = [app_v3.row_json(r) for r in cur.fetchall()]
-        cur.execute("select coalesce(sum(amount),0)::bigint settled from company_settlements")
+        cur.execute(f"""select (s.settled_at at time zone 'Asia/Tehran')::date day,
+                               coalesce(sum(s.amount),0)::bigint settled
+                        from company_settlements s where {settle_clause}
+                        group by 1""", settle_params)
+        settled_by_day = {str(row["day"]): int(row["settled"] or 0) for row in cur.fetchall()}
+        for day in days:
+            day["settled"] = settled_by_day.get(str(day["day"]), 0)
+            day["balance"] = int(day.get("company_share") or 0) - day["settled"]
+        cur.execute(f"select coalesce(sum(s.amount),0)::bigint settled from company_settlements s where {settle_clause}", settle_params)
         settled = int(cur.fetchone()["settled"] or 0)
     total = sum(int(x["company_share"] or 0) for x in days)
     return jsonify({"days": days, "totals": {"company_share": total, "settled": settled, "due": max(total-settled, 0), "received": sum(int(x["received"] or 0) for x in days), "own_share": sum(int(x["own_share"] or 0) for x in days)}})
@@ -308,7 +266,8 @@ def ops_financial_report():
             select v.id::text,coalesce(v.visited_at,v.created_at) visit_date,
                    trim(concat_ws(' ',c.first_name,c.last_name)) customer_name,
                    (select phone from customer_phones p where p.customer_id=c.id order by is_primary desc,id limit 1) phone,
-                   v.service_type,v.invoice_amount,v.received_amount,v.company_share_amount,v.customer_balance
+                   v.service_type,v.invoice_amount,v.received_amount,v.company_share_amount,
+                   (v.received_amount-v.company_share_amount) own_share_amount,v.customer_balance
             from service_visits v join customers_v2 c on c.id=v.customer_id
             where {clause} order by visit_date
         """, params)
@@ -316,12 +275,17 @@ def ops_financial_report():
         exp_clause, exp_params = _range_clause("e.expense_date::timestamptz")
         cur.execute(f"select coalesce(sum(e.amount),0)::bigint expenses from expenses e where {exp_clause}", exp_params)
         expenses = int(cur.fetchone()["expenses"] or 0)
+        cancel_clause, cancel_params = _range_clause("coalesce(b.cancelled_at,b.updated_at)")
+        cur.execute(f"select count(*)::int cancellations from bale_jobs b where b.status='cancelled' and {cancel_clause}", cancel_params)
+        cancellations = int(cur.fetchone()["cancellations"] or 0)
     totals = {
         "invoice": sum(int(r.get("invoice_amount") or 0) for r in rows),
         "received": sum(int(r.get("received_amount") or 0) for r in rows),
         "company_share": sum(int(r.get("company_share_amount") or 0) for r in rows),
         "customer_balance": sum(int(r.get("customer_balance") or 0) for r in rows),
         "expenses": expenses,
+        "service_count": len(rows),
+        "cancellations": cancellations,
     }
     totals["own_share"] = totals["received"] - totals["company_share"] - expenses
     by_day = {}
@@ -361,13 +325,21 @@ def ops_profile_set():
 @app.get("/api/ops/recurring")
 @app_v3.roles_required("technician")
 def ops_recurring():
-    days = max(0, min(int(request.args.get("days") or 30), 365))
+    try:
+        days = max(0, min(int(request.args.get("days") or 30), 365))
+    except (TypeError, ValueError):
+        days = 30
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute("""
+          with latest as (
+            select distinct on (v.customer_id) v.id,v.customer_id,v.next_service_at,v.service_type
+            from service_visits v where v.status='completed'
+            order by v.customer_id,coalesce(v.visited_at,v.created_at) desc,v.created_at desc
+          )
           select v.id::text service_id,v.customer_id::text,trim(concat_ws(' ',c.first_name,c.last_name)) customer_name,
                  (select phone from customer_phones p where p.customer_id=c.id order by is_primary desc,id limit 1) phone,
                  c.address,v.next_service_at,v.service_type
-          from service_visits v join customers_v2 c on c.id=v.customer_id
+          from latest v join customers_v2 c on c.id=v.customer_id
           where v.next_service_at is not null and v.next_service_at <= now() + (%s||' days')::interval
           order by v.next_service_at asc limit 500
         """, (days,))
@@ -383,12 +355,19 @@ def ops_customer_timeline(customer_id):
                               received_amount amount,next_service_at,created_at
                        from service_visits where customer_id=%s::uuid order by coalesce(visited_at,created_at) desc limit 300""", (customer_id,))
         services = [app_v3.row_json(r) for r in cur.fetchall()]
-        cur.execute("select id::text,created_at at,'note' kind,note_type title,note_text description,null::bigint amount,null::timestamptz next_service_at,created_at from customer_notes where customer_id=%s::uuid order by created_at desc limit 300", (customer_id,))
+        cur.execute("select id::text,created_at at,'note' kind,note_type title,note_text description,null::bigint amount,null::timestamptz next_service_at,created_at,audio_data_url,audio_mime_type from customer_notes where customer_id=%s::uuid order by created_at desc limit 300", (customer_id,))
         notes = [app_v3.row_json(r) for r in cur.fetchall()]
         cur.execute("""select id::text,issued_at at,'invoice' kind,'فاکتور '||invoice_no title,notes description,total amount,null::timestamptz next_service_at,created_at
                        from invoices where customer_id=%s::uuid order by issued_at desc limit 200""", (customer_id,))
         invoices = [app_v3.row_json(r) for r in cur.fetchall()]
-    rows = services + notes + invoices
+        cur.execute("""select m.id::text,m.created_at at,'media' kind,
+                              case m.kind when 'before' then 'تصویر قبل از کار' else 'تصویر بعد از کار' end title,
+                              null::text description,null::bigint amount,null::timestamptz next_service_at,
+                              m.created_at,m.data_url,m.kind media_kind
+                       from service_media m join service_visits v on v.id=m.service_visit_id
+                       where v.customer_id=%s::uuid order by m.created_at desc limit 300""", (customer_id,))
+        media = [app_v3.row_json(r) for r in cur.fetchall()]
+    rows = services + notes + invoices + media
     rows.sort(key=lambda x: str(x.get("at") or x.get("created_at") or ""), reverse=True)
     return jsonify(rows)
 
@@ -400,8 +379,12 @@ def ops_customer_note_add(customer_id):
     text = valid_text(data.get("text"), "یادداشت", required=True, max_length=5000)
     note_type = str(data.get("type") or "text")
     if note_type not in {"text", "voice"}: note_type = "text"
+    audio_data_url = str(data.get("audio_data_url") or "")
+    audio_mime_type = str(data.get("audio_mime_type") or "")[:100]
+    if note_type == "voice" and (not audio_data_url.startswith("data:audio/") or len(audio_data_url) > 3000000):
+        raise ValidationError("فایل صوتی معتبر و حداکثر حدود ۲ مگابایت باشد")
     with app_v3.get_db() as db, db.cursor() as cur:
-        cur.execute("insert into customer_notes(customer_id,note_text,note_type,created_by) values(%s::uuid,%s,%s,%s) returning id,created_at", (customer_id,text,note_type,str(request.current_user.get("user_id"))))
+        cur.execute("insert into customer_notes(customer_id,note_text,note_type,audio_data_url,audio_mime_type,created_by) values(%s::uuid,%s,%s,%s,%s,%s) returning id,created_at", (customer_id,text,note_type,audio_data_url or None,audio_mime_type or None,str(request.current_user.get("user_id"))))
         row = cur.fetchone()
         app_v3.audit(cur,"customer",customer_id,"note",after={"type":note_type})
     return jsonify({"ok":True,"id":row["id"],"created_at":row["created_at"].isoformat()})
@@ -444,11 +427,13 @@ def ops_restore_cancelled(job_id):
 @app.get("/api/ops/health")
 @app_v3.roles_required("technician")
 def ops_health():
-    status = {"database": False, "bale": False, "reporting_bot": False, "groq": False, "voice": False, "push": False}
+    status = {"database": False, "bale": False, "reporting_bot": False, "groq": False, "elevenlabs": False, "push": False, "last_sync": None}
     try:
         with app_v3.get_db() as db, db.cursor() as cur:
             cur.execute("select 1 ok"); status["database"] = cur.fetchone()["ok"] == 1
-            _ensure_push_schema(cur); vapid = _ensure_vapid(cur); status["push"] = bool(vapid.get("public_key"))
+            vapid = _ensure_vapid(cur); status["push"] = bool(vapid.get("public_key"))
+            cur.execute("select max(run_at) last_sync from ops_cron_runs")
+            row = cur.fetchone(); status["last_sync"] = row["last_sync"].isoformat() if row and row["last_sync"] else None
     except Exception:
         pass
     try:
@@ -460,10 +445,47 @@ def ops_health():
     except Exception:
         pass
     try:
-        ai = aqua_ai.configuration_status(); status["groq"] = bool(ai.get("brain")); status["voice"] = bool(ai.get("voice"))
+        ai = aqua_ai.configuration_status(); status["groq"] = bool(ai.get("brain")); status["elevenlabs"] = bool(ai.get("voice"))
     except Exception:
         pass
     return jsonify(status)
+
+
+@app.get("/api/ops/notifications")
+@app_v3.roles_required("technician")
+def notifications_list():
+    user_id = str(request.current_user.get("user_id"))
+    with app_v3.get_db() as db, db.cursor() as cur:
+        cur.execute("""select id::text,title,body,page,category,created_at,read_at
+                       from app_notifications
+                       where dismissed_at is null and (user_id is null or user_id=%s)
+                       order by created_at desc limit 200""", (user_id,))
+        rows = [app_v3.row_json(row) for row in cur.fetchall()]
+    return jsonify({"rows": rows, "unread": sum(1 for row in rows if not row.get("read_at"))})
+
+
+@app.patch("/api/ops/notifications/<notification_id>")
+@app_v3.roles_required("technician")
+def notification_update(notification_id):
+    data = request.get_json() or {}
+    action = str(data.get("action") or "read")
+    if action not in {"read", "dismiss"}:
+        raise ValidationError("عملیات اعلان معتبر نیست")
+    column = "read_at" if action == "read" else "dismissed_at"
+    with app_v3.get_db() as db, db.cursor() as cur:
+        cur.execute(f"update app_notifications set {column}=now() where id=%s::uuid and (user_id is null or user_id=%s) returning id", (notification_id, str(request.current_user.get("user_id"))))
+        if not cur.fetchone():
+            return jsonify({"error": "اعلان پیدا نشد"}), 404
+    return jsonify({"ok": True})
+
+
+@app.post("/api/ops/notifications/read-all")
+@app_v3.roles_required("technician")
+def notifications_read_all():
+    user_id = str(request.current_user.get("user_id"))
+    with app_v3.get_db() as db, db.cursor() as cur:
+        cur.execute("update app_notifications set read_at=coalesce(read_at,now()) where dismissed_at is null and (user_id is null or user_id=%s)", (user_id,))
+    return jsonify({"ok": True})
 
 
 @app.get("/api/ops/reporting-bot/settings")
@@ -531,7 +553,10 @@ def ops_backup_download():
 @app.post("/api/ops/backup/send")
 @app_v3.roles_required("admin")
 def ops_backup_send():
-    s = _reporting_settings(); data = _backup_bytes()
+    s = _reporting_settings()
+    if not s.get("bot_token") or not s.get("chat_id"):
+        raise ValidationError("ابتدا ربات گزارش و کانال مقصد را تنظیم کن")
+    data = _backup_bytes()
     name = "AquaGold-backup-" + datetime.now(TEHRAN).strftime("%Y%m%d-%H%M") + ".json.gz"
     result = _bale_document(s["bot_token"], s["chat_id"], name, data, "🛡 بکاپ AquaGold")
     return jsonify({"ok": bool(result.get("ok", True))})
@@ -541,7 +566,7 @@ def ops_backup_send():
 @app_v3.token_required
 def push_public_key():
     with app_v3.get_db() as db, db.cursor() as cur:
-        _ensure_push_schema(cur); vapid = _ensure_vapid(cur)
+        vapid = _ensure_vapid(cur)
     return jsonify({"public_key": vapid["public_key"]})
 
 
@@ -552,7 +577,6 @@ def push_subscribe():
     if not sub.get("endpoint"):
         raise ValidationError("اشتراک Push معتبر نیست")
     with app_v3.get_db() as db, db.cursor() as cur:
-        _ensure_push_schema(cur)
         cur.execute("""insert into push_subscriptions(user_id,subscription,active,updated_at)
                        values(%s,%s,true,now()) on conflict(subscription) do update set active=true,updated_at=now()""",
                     (str(request.current_user.get("user_id")), app_v3.Jsonb(sub)))
@@ -562,7 +586,10 @@ def push_subscribe():
 @app.post("/api/ops/push/test")
 @app_v3.roles_required("admin")
 def push_test():
-    return jsonify({"ok": True, "sent": _send_push("AquaGold", "اعلان آزمایشی با موفقیت ارسال شد", "/", "test")})
+    sent = _send_push("AquaGold", "اعلان آزمایشی با موفقیت ارسال شد", "/", "test")
+    if not sent:
+        return jsonify({"ok": False, "sent": 0, "error": "اعلان به هیچ دستگاه فعالی تحویل نشد؛ ابتدا Push را روی PWA نصب‌شده فعال کن"}), 409
+    return jsonify({"ok": True, "sent": sent})
 
 
 def _nightly_text():
@@ -572,24 +599,27 @@ def _nightly_text():
                        from service_visits where (coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::date=(now() at time zone 'Asia/Tehran')::date""")
         r = cur.fetchone()
         cur.execute("select count(*)::int c from bale_jobs where status='cancelled' and (coalesce(cancelled_at,updated_at) at time zone 'Asia/Tehran')::date=(now() at time zone 'Asia/Tehran')::date")
-        cancelled = cur.fetchone()["c"]
+        cancelled = int(cur.fetchone()["c"] or 0)
         cur.execute("select count(*)::int c from bale_jobs where status in ('new','review')")
-        pending = cur.fetchone()["c"]
+        pending = int(cur.fetchone()["c"] or 0)
     own = int(r["received"] or 0) - int(r["company_share"] or 0)
+    def fa(value):
+        grouped = f"{int(value or 0):,}".replace(",", "،")
+        return grouped.translate(str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹"))
     return ("🌙 گزارش شبانه AquaGold\n\n"
-            f"سرویس‌های امروز: {r['services']}\n"
-            f"دریافتی: {int(r['received'] or 0):,} تومان\n"
-            f"سهم شرکت: {int(r['company_share'] or 0):,} تومان\n"
-            f"سهم شما: {own:,} تومان\n"
-            f"کنسلی امروز: {cancelled}\n"
-            f"کارهای تعیین‌تکلیف‌نشده: {pending}")
+            f"سرویس‌های امروز: {fa(r['services'])}\n"
+            f"دریافتی: {fa(r['received'])} تومان\n"
+            f"سهم شرکت: {fa(r['company_share'])} تومان\n"
+            f"سهم شما: {fa(own)} تومان\n"
+            f"کنسلی امروز: {fa(cancelled)}\n"
+            f"کارهای تعیین‌تکلیف‌نشده: {fa(pending)}")
 
 
 @app.get("/api/ops/nightly")
 @app_v3.limiter.exempt
 def ops_nightly():
     auth = request.headers.get("Authorization", "")
-    cron_secret = __import__("os").getenv("CRON_SECRET", "")
+    cron_secret = os.getenv("CRON_SECRET", "")
     schedule = request.headers.get("x-vercel-cron-schedule", "")
     if cron_secret:
         if auth != f"Bearer {cron_secret}":
@@ -600,90 +630,55 @@ def ops_nightly():
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute("insert into ops_cron_runs(run_key) values(%s) on conflict do nothing returning run_key", (run_key,))
         if not cur.fetchone():
-            return jsonify({"ok": True, "duplicate": True, "run_key": run_key})
+            cur.execute("select result from ops_cron_runs where run_key=%s", (run_key,))
+            previous = dict((cur.fetchone() or {}).get("result") or {})
+            if previous.get("ok") is True:
+                return jsonify({"ok": True, "duplicate": True, "run_key": run_key, "result": previous})
     s = _reporting_settings()
-    sent = {}
-    if s["enabled"] and s["bot_token"] and s["chat_id"]:
+    sent, errors = {}, {}
+    if s["enabled"] and (s["send_nightly"] or s["send_backup"]) and (not s["bot_token"] or not s["chat_id"]):
+        errors["configuration"] = "ربات گزارش یا کانال مقصد تنظیم نشده است"
+    elif s["enabled"] and s["bot_token"] and s["chat_id"]:
         if s["send_nightly"]:
-            sent["report"] = bale_bridge._bale_call(s["bot_token"], "sendMessage", {"chat_id": s["chat_id"], "text": _nightly_text()})
+            try:
+                sent["report"] = bale_bridge._bale_call(s["bot_token"], "sendMessage", {"chat_id": s["chat_id"], "text": _nightly_text()})
+            except Exception as exc:
+                errors["report"] = str(exc)[:180]
         if s["send_backup"]:
-            data = _backup_bytes(); name = "AquaGold-backup-" + datetime.now(TEHRAN).strftime("%Y%m%d") + ".json.gz"
-            sent["backup"] = _bale_document(s["bot_token"], s["chat_id"], name, data, "🛡 بکاپ شبانه AquaGold")
+            try:
+                data = _backup_bytes(); name = "AquaGold-backup-" + datetime.now(TEHRAN).strftime("%Y%m%d") + ".json.gz"
+                sent["backup"] = _bale_document(s["bot_token"], s["chat_id"], name, data, "🛡 بکاپ شبانه AquaGold")
+            except Exception as exc:
+                errors["backup"] = str(exc)[:180]
     with app_v3.get_db() as db, db.cursor() as cur:
-        cur.execute("""select distinct c.id::text,trim(concat_ws(' ',c.first_name,c.last_name)) name
-                       from service_visits v join customers_v2 c on c.id=v.customer_id
-                       where v.next_service_at between now()-interval '6 hours' and now()+interval '24 hours' limit 50""")
+        cur.execute("""with latest as (
+                         select distinct on (customer_id) id,customer_id,next_service_at
+                         from service_visits where status='completed'
+                         order by customer_id,coalesce(visited_at,created_at) desc,created_at desc
+                       )
+                       select v.id::text service_id,c.id::text,trim(concat_ws(' ',c.first_name,c.last_name)) name,v.next_service_at
+                       from latest v join customers_v2 c on c.id=v.customer_id
+                       where v.next_service_at between now()-interval '48 hours' and now()+interval '24 hours' limit 200""")
         due = [app_v3.row_json(r) for r in cur.fetchall()]
+    due_sent = 0
     for c in due:
-        _send_push("موعد سرویس دوره‌ای", f"نوبت سرویس مجدد {c['name']} رسیده", "/?open=recurring", "recurring-"+c["id"])
-    summary = {"ok": True, "due": len(due), "sent": {k: bool(v) for k,v in sent.items()}, "run_key": run_key}
+        reminder_key = f"recurring:{c['service_id']}:{c['next_service_at'].date().isoformat()}"
+        with app_v3.get_db() as db, db.cursor() as cur:
+            cur.execute("select 1 from ops_cron_runs where run_key=%s", (reminder_key,))
+            if cur.fetchone():
+                continue
+            cur.execute("""insert into app_notifications(title,body,page,category,dedupe_key)
+                           values(%s,%s,'recurring','recurring',%s) on conflict(dedupe_key) do nothing""",
+                        ("موعد سرویس دوره‌ای", f"موعد سرویس دوره‌ای مشتری {c['name']} رسیده است.", reminder_key))
+        count = _send_push("موعد سرویس دوره‌ای", f"موعد سرویس دوره‌ای مشتری {c['name']} رسیده است.", "/?open=recurring", "recurring-"+c["id"])
+        if count:
+            with app_v3.get_db() as db, db.cursor() as cur:
+                cur.execute("insert into ops_cron_runs(run_key,result) values(%s,%s) on conflict do nothing", (reminder_key, app_v3.Jsonb({"sent": count})))
+            due_sent += 1
+    summary = {"ok": not errors, "due": len(due), "due_sent": due_sent, "sent": {k: bool(v) for k,v in sent.items()}, "errors": errors, "run_key": run_key}
     try:
         with app_v3.get_db() as db, db.cursor() as cur:
             cur.execute("update ops_cron_runs set result=%s where run_key=%s", (app_v3.Jsonb(summary), run_key))
     except Exception:
         pass
-    return jsonify(summary)
-
-
-_original_groq_answer = aqua_ai._groq_answer
-
-def _groq_answer_v8(settings, text, history, context):
-    if any(h in str(text) for h in LIVE_HINTS):
-        key = settings.get("groq_api_key")
-        if key:
-            now = datetime.now(TEHRAN).strftime("%Y-%m-%d %H:%M Asia/Tehran")
-            system = ("تو آریا هستی، رفیق فارسی و خودمونی کاربر. برای سوال‌های لحظه‌ای حتماً از جست‌وجوی وب داخلی مدل استفاده کن. "
-                      "اطلاعات قدیمی را به‌جای داده زنده جا نزن. منبع یا زمان داده را کوتاه بگو. زمان فعلی: " + now)
-            messages = [{"role": "system", "content": system}, {"role": "user", "content": str(text)[:900]}]
-            headers = {"Authorization": f"Bearer {key}"}
-            for model in ("groq/compound-mini", "groq/compound"):
-                try:
-                    data = aqua_ai._post_json("https://api.groq.com/openai/v1/chat/completions", {"model": model, "messages": messages, "temperature": 0.15}, headers, timeout=45)
-                    answer = data.get("choices", [{}])[0].get("message", {}).get("content")
-                    if answer:
-                        return answer
-                except Exception as exc:
-                    app_v3.logger.warning("aqua_live_search_failed model=%s detail=%s", model, str(exc)[:180])
-    return _original_groq_answer(settings, text, history, context)
-
-aqua_ai._groq_answer = _groq_answer_v8
-
-
-def _extract_bale_v8(text):
-    parsed = parse_intake(text)
-    phone = (parsed.get("phones") or [""])[0]
-    if not phone and not any(k in str(text) for k in bale_bridge.KEYWORDS):
-        return None
-    return {
-        "customer_name": parsed.get("last_name") or "",
-        "phone": phone,
-        "address": parsed.get("address") or "",
-        "job_type": parsed.get("service_type") or "سرویس",
-        "visitor_code": parsed.get("visitor_code"),
-        "time_text": parsed.get("time_text"),
-        "matched_keywords": [k for k in bale_bridge.KEYWORDS if k in str(text)],
-        "rule": "smart-v8",
-    }
-
-bale_bridge._extract_job = _extract_bale_v8
-
-try:
-    _original_bale_webhook = app.view_functions.get("bale_webhook")
-    if _original_bale_webhook:
-        def _bale_webhook_with_push(*args, **kwargs):
-            result = _original_bale_webhook(*args, **kwargs)
-            try:
-                response = app.make_response(result)
-                data = response.get_json(silent=True) if response.is_json else {}
-                if data and data.get("registered"):
-                    payload = request.get_json(silent=True) or {}
-                    _message, text, _chat, _sender, _sender_name = bale_bridge._message_payload(payload)
-                    parsed = bale_bridge._extract_job(text) or {}
-                    label = parsed.get("customer_name") or parsed.get("phone") or "کار جدید"
-                    _send_push("🔔 کار جدید بله", label, "/?open=bale-jobs", "bale-job")
-            except Exception as exc:
-                app_v3.logger.warning("bale_push_failed: %s", exc)
-            return result
-        app.view_functions["bale_webhook"] = _bale_webhook_with_push
-except Exception as exc:
-    app_v3.logger.warning("bale_webhook_wrap_failed: %s", exc)
+    return jsonify(summary), (200 if not errors else 502)

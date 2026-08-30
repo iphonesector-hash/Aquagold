@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from functools import wraps
 from urllib.parse import urlsplit, urlunsplit
@@ -190,6 +190,8 @@ def row_json(row):
             v = float(v)
         elif isinstance(v, UUID):
             v = str(v)
+        elif isinstance(v, (date, datetime)):
+            v = v.isoformat()
         out[k] = v
     return out
 
@@ -387,7 +389,22 @@ def health():
         with get_db() as db, db.cursor() as cur:
             cur.execute("select 1")
             cur.fetchone()
-        return jsonify({"status": "healthy", "database": "neon", "version": "v5"})
+        payload = {"status": "healthy", "database": "neon", "version": "v8"}
+        try:
+            import aqua_ai
+            status = aqua_ai.configuration_status()
+            payload["ai"] = "configured" if status["brain"] else "not_configured"
+            payload["aqua_ai"] = status
+        except Exception:
+            payload["ai"] = "unavailable"
+            payload["aqua_ai"] = {"brain": False, "voice": False, "provider": "Aqua"}
+        try:
+            import bale_bridge
+            bale = bale_bridge._public_settings(bale_bridge._load_settings())
+            payload["bale"] = {"enabled": bale["enabled"], "token": bale["bot_token_configured"], "webhook": bale["webhook_configured"]}
+        except Exception:
+            payload["bale"] = {"enabled": False, "token": False, "webhook": False}
+        return jsonify(payload)
     except Exception:
         logger.exception("health_database_check_failed")
         return jsonify({"status": "unhealthy", "database": "unavailable"}), 503
@@ -497,7 +514,10 @@ def customers_list():
                    coalesce(array_agg(p.phone order by p.is_primary desc,p.id) filter(where p.phone is not null),'{}') phones,
                    (select count(*)::int from service_visits vx where vx.customer_id=c.id) service_count,
                    (select coalesce(sum(vx.received_amount),0)::bigint from service_visits vx where vx.customer_id=c.id) total_received,
-                   (select coalesce(sum(vx.customer_balance),0)::bigint from service_visits vx where vx.customer_id=c.id) total_balance
+                   (select coalesce(sum(vx.customer_balance),0)::bigint from service_visits vx where vx.customer_id=c.id) total_balance,
+                   (select vx.service_type from service_visits vx where vx.customer_id=c.id order by coalesce(vx.visited_at,vx.created_at) desc limit 1) last_service,
+                   (select vx.received_amount from service_visits vx where vx.customer_id=c.id order by coalesce(vx.visited_at,vx.created_at) desc limit 1) last_amount,
+                   (select coalesce(vx.visited_at,vx.created_at) from service_visits vx where vx.customer_id=c.id order by coalesce(vx.visited_at,vx.created_at) desc limit 1) last_service_at
             from customers_v2 c left join customer_phones p on p.customer_id=c.id
             where """ + where + """
             group by c.id order by c.created_at desc limit %s offset %s
@@ -874,7 +894,8 @@ def stats():
 @token_required
 def smart_parse():
     text = valid_text((request.get_json() or {}).get("text"), "متن", required=True, max_length=8000)
-    return jsonify(parse_intake(text))
+    from ai_intake import parse_with_ai
+    return jsonify(parse_with_ai(text))
 
 
 @app.post("/api/smart/register")
@@ -882,6 +903,7 @@ def smart_parse():
 def smart_register():
     data = request.get_json() or {}
     parsed = data.get("parsed") or parse_intake(data.get("text", ""))
+    first = valid_text(parsed.get("first_name"), "نام", required=False, max_length=160)
     last = valid_text(parsed.get("last_name"), "نام خانوادگی", required=True, max_length=160)
     phones = valid_phones(parsed.get("phones", []))
     lat, lng = valid_coordinates(data.get("latitude"), data.get("longitude"))
@@ -892,7 +914,8 @@ def smart_register():
     description = valid_text(data.get("description") or parsed.get("description") or service_type, "شرح سرویس", max_length=4000)
     visitor_code = valid_text(parsed.get("visitor_code"), "کد ویزیتور", max_length=100)
     raw_text = valid_text(parsed.get("raw_text") or data.get("text"), "متن خام", max_length=8000)
-    visited_at = valid_timestamp(data.get("visited_at"), "زمان مراجعه")
+    visited_at = valid_timestamp(data.get("visited_at") or parsed.get("visited_at"), "زمان مراجعه")
+    scheduled_until = valid_timestamp(data.get("scheduled_until") or parsed.get("scheduled_until"), "پایان بازه مراجعه")
     with get_db() as db, db.cursor() as cur:
         cid = selected
         if cid:
@@ -909,9 +932,9 @@ def smart_register():
         if not cid:
             # Same surname never auto-merges. A new independent customer is created unless exact phone match exists.
             if lat is not None and lng is not None:
-                cur.execute("insert into customers_v2(last_name,normalized_name,address,map_label,location,location_accuracy_m,location_source,created_by) values(%s,%s,%s,%s,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s,'gps',%s) returning id", (last,normalize_name(None,last),address,last,lng,lat,acc,str(request.current_user.get("user_id"))))
+                cur.execute("insert into customers_v2(first_name,last_name,normalized_name,address,map_label,location,location_accuracy_m,location_source,created_by) values(%s,%s,%s,%s,%s,st_setsrid(st_makepoint(%s,%s),4326)::geography,%s,'gps',%s) returning id", (first,last,normalize_name(first,last),address," ".join(x for x in (first,last) if x),lng,lat,acc,str(request.current_user.get("user_id"))))
             else:
-                cur.execute("insert into customers_v2(last_name,normalized_name,address,map_label,created_by) values(%s,%s,%s,%s,%s) returning id", (last,normalize_name(None,last),address,last,str(request.current_user.get("user_id"))))
+                cur.execute("insert into customers_v2(first_name,last_name,normalized_name,address,map_label,created_by) values(%s,%s,%s,%s,%s,%s) returning id", (first,last,normalize_name(first,last),address," ".join(x for x in (first,last) if x),str(request.current_user.get("user_id"))))
             cid = cur.fetchone()["id"]
         for i, phone in enumerate(phones):
             cur.execute("select customer_id from customer_phones where phone=%s", (phone,))
@@ -929,8 +952,8 @@ def smart_register():
             visit_sql, loc_params = "st_setsrid(st_makepoint(%s,%s),4326)::geography", [lng, lat]
         else:
             visit_sql, loc_params = "null", []
-        params = [cid,str(request.current_user.get("user_id")),visitor_code,service_type,description,received,invoice,received,pct,company,balance,overpayment,visited_at] + loc_params + [raw_text]
-        cur.execute(f"insert into service_visits(customer_id,registered_by,visitor_code,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,overpayment_amount,status,visited_at,visit_location,raw_chat_input) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'registered',%s,{visit_sql},%s) returning id", params)
+        params = [cid,str(request.current_user.get("user_id")),visitor_code,service_type,description,received,invoice,received,pct,company,balance,overpayment,visited_at,scheduled_until] + loc_params + [raw_text]
+        cur.execute(f"insert into service_visits(customer_id,registered_by,visitor_code,service_type,description,amount,invoice_amount,received_amount,company_share_percent,company_share_amount,customer_balance,overpayment_amount,status,visited_at,scheduled_until,visit_location,raw_chat_input) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'completed',%s,%s,{visit_sql},%s) returning id", params)
         vid = cur.fetchone()["id"]
         audit(cur, "service_visit", vid, "smart_create", after={"customer_id": str(cid), "received": received, "raw_text": data.get("text")})
     return jsonify({"customer_id": str(cid), "visit_id": str(vid), "parsed": parsed}), 201

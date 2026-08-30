@@ -2,7 +2,7 @@
 (()=>{
 const previous=window.app;
 if(typeof previous!=='function')return;
-const pickMime=()=>{const list=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];for(const m of list){try{if(window.MediaRecorder?.isTypeSupported?.(m))return m}catch{}}return''};
+const pickMime=()=>{const list=['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus'];for(const m of list){try{if(window.MediaRecorder&&MediaRecorder.isTypeSupported(m))return m}catch{}}return''};
 window.app=function(){
  const s=previous();
  Object.assign(s,{aquaVoiceState:'idle',aquaLastTranscript:'',aquaVoiceError:'',aquaVoiceSequence:0});
@@ -10,25 +10,10 @@ window.app=function(){
  s.stopAquaSpeech=function(){this.aquaVoiceSequence=(this.aquaVoiceSequence||0)+1;try{oldStop?.()}catch{}if(!this.aquaRecording&&!this.aquaTranscribing&&!this.aquaBusy)this.aquaVoiceState='idle'};
  s.sendAquaVoiceText=async function(value){
   const text=String(value||'').trim();if(!text)return false;
-  this.stopAquaSpeech?.();
-  const seq=++this.aquaVoiceSequence;
   this.aquaLastTranscript=text;this.aquaInput=text;this.aquaVoiceError='';
-  this.aquaMessages.push({role:'user',content:text});this.aquaInput='';this.aquaBusy=true;this.aquaVoiceSending=true;this.aquaVoiceState='thinking';this.aquaScroll?.();
-  try{
-   const history=this.aquaHistory?.()||[];
-   const r=await this.api('/aqua-ai/chat',{method:'POST',body:JSON.stringify({text,history})});
-   if(seq!==this.aquaVoiceSequence)return false;
-   const m={role:'assistant',content:r.answer||'انجام شد',chart:r.chart,pending_action:r.pending_action,action:r.action,results:r.results};
-   this.aquaMessages.push(m);this.aquaBusy=false;this.aquaVoiceSending=false;this.aquaVoiceState='speaking';this.aquaScroll?.();
-   setTimeout(async()=>{if(seq!==this.aquaVoiceSequence)return;try{await this.speakAqua?.(m.content)}finally{if(seq===this.aquaVoiceSequence&&!this.aquaRecording&&!this.aquaTranscribing)this.aquaVoiceState='idle'}},20);
-   return true;
-  }catch(e){
-   if(seq===this.aquaVoiceSequence){this.aquaInput=text;this.aquaVoiceError=e?.message||'ارسال ویس انجام نشد';this.aquaMessages.push({role:'assistant',content:this.aquaVoiceError,error:true});}
-   return false;
-  }finally{
-   if(seq===this.aquaVoiceSequence){this.aquaBusy=false;this.aquaVoiceSending=false;if(this.aquaVoiceState==='thinking')this.aquaVoiceState='idle'}
-   this.aquaScroll?.();
-  }
+  const sent=await this.submitAquaText?.(text,'voice');
+  if(!sent){this.aquaInput=text;this.aquaVoiceState='ready';this.aquaVoiceError=this.aquaVoiceError||'ارسال خودکار انجام نشد'}
+  return !!sent;
  };
  s.toggleAquaRecording=async function(){
   if(this.aquaRecording){
@@ -62,7 +47,7 @@ window.app=function(){
      const form=new FormData();
      const ext=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':'webm';
      form.append('audio',blob,'aria.'+ext);
-     const headers={},csrf=this.cookie?.('aquagold_csrf');if(csrf)headers['X-CSRF-Token']=csrf;
+     const headers={'Idempotency-Key':crypto.randomUUID()},csrf=this.cookie?.('aquagold_csrf');if(csrf)headers['X-CSRF-Token']=csrf;
      const response=await fetch('/api/aqua-ai/transcribe',{method:'POST',body:form,headers,credentials:'same-origin',cache:'no-store'});
      let d={};try{d=await response.json()}catch{}
      if(!response.ok)throw Error(d.error||'تبدیل صدا به متن انجام نشد');
