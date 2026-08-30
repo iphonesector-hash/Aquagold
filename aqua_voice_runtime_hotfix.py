@@ -1,9 +1,9 @@
 """Narrow runtime hotfix for Aqua voice on iPhone/PWA.
 
 Fixes three isolated voice paths without changing the rest of AquaGold:
-- stable iPhone MediaRecorder capture;
+- stable iPhone MediaRecorder capture and deterministic voice auto-send;
 - Groq Whisper STT with the same browser-like HTTP headers used by working Groq chat calls;
-- speech state that becomes active only when audio is actually playing, with iOS speechSynthesis fallback.
+- iOS Persian speech that prefers the installed Dariush voice and stops when the app is hidden.
 """
 from __future__ import annotations
 
@@ -120,6 +120,7 @@ VOICE_HOTFIX_JS = r"""
 (()=>{
  const previous=window.app;
  if(typeof previous!=='function')return;
+ const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const addStyle=()=>{
   if(document.getElementById('aqua-voice-runtime-style'))return;
   const st=document.createElement('style');st.id='aqua-voice-runtime-style';
@@ -131,74 +132,113 @@ VOICE_HOTFIX_JS = r"""
   if(!window.speechSynthesis)return[];
   let voices=window.speechSynthesis.getVoices?.()||[];
   if(voices.length)return voices;
-  await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;resolve()};try{window.speechSynthesis.addEventListener('voiceschanged',finish,{once:true})}catch{}setTimeout(finish,650)});
+  await new Promise(resolve=>{let done=false;const finish=()=>{if(done)return;done=true;resolve()};try{window.speechSynthesis.addEventListener('voiceschanged',finish,{once:true})}catch{}setTimeout(finish,900)});
   return window.speechSynthesis.getVoices?.()||[];
+ };
+ const pickPersianVoice=voices=>{
+  const list=Array.isArray(voices)?voices:[];
+  const dariush=list.find(v=>{const name=String(v?.name||'').toLowerCase(),uri=String(v?.voiceURI||'').toLowerCase();return name.includes('dariush')||uri.includes('dariush')||name.includes('داریوش')||uri.includes('داریوش')});
+  if(dariush)return dariush;
+  return list.find(v=>/^fa(?:-|_)/i.test(String(v?.lang||'')))||null;
  };
  window.app=function(){
   const s=previous();
+  s.aquaVoiceRunId=Number(s.aquaVoiceRunId||0);
+  s.aquaSpeechUtterance=null;
 
   s.stopAquaSpeech=function(){
    try{if(this.aquaPlayer){this.aquaPlayer.pause();this.aquaPlayer.removeAttribute('src');this.aquaPlayer.load()}}catch{}
    try{if(this.aquaAudio){this.aquaAudio.pause();this.aquaAudio=null}}catch{}
    try{if(this.aquaAudioSource){this.aquaAudioSource.stop();this.aquaAudioSource.disconnect();this.aquaAudioSource=null}}catch{}
    try{window.speechSynthesis?.cancel?.()}catch{}
+   this.aquaSpeechUtterance=null;
    this.aquaSpeaking=false;
   };
 
+  if(!s.aquaVoiceLifecycleBound){
+   s.aquaVoiceLifecycleBound=true;
+   const stopForBackground=()=>{try{s.stopAquaSpeech?.()}catch{}};
+   document.addEventListener('visibilitychange',()=>{if(document.hidden)stopForBackground()});
+   window.addEventListener('pagehide',stopForBackground);
+   window.addEventListener('beforeunload',stopForBackground);
+  }
+
   s.speakAqua=async function(text){
    text=String(text||'').trim();
-   if(!text||this.aquaSpeaking)return false;
-   let url=null,serverError=null;
+   if(!text||this.aquaSpeaking||document.hidden)return false;
+   this.stopAquaSpeech?.();
+   let systemError=null;
+
+   try{
+    if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)throw Error('صدای داخلی آیفون در دسترس نیست');
+    const voices=await getVoices();
+    if(document.hidden)return false;
+    const voice=pickPersianVoice(voices);
+    if(!voice)throw Error('صدای فارسی داخلی آیفون پیدا نشد');
+    const utter=new SpeechSynthesisUtterance(text);
+    utter.voice=voice;
+    utter.lang=String(voice.lang||'fa-IR');
+    utter.rate=.94;utter.pitch=1;utter.volume=1;
+    this.aquaSpeechUtterance=utter;
+    window.speechSynthesis.cancel();
+    try{window.speechSynthesis.resume?.()}catch{}
+    await new Promise((resolve,reject)=>{
+     let started=false,finished=false;
+     const done=(ok,err)=>{if(finished)return;finished=true;this.aquaSpeaking=false;this.aquaSpeechUtterance=null;ok?resolve():reject(err||Error('پخش صدای داخلی ناموفق بود'))};
+     utter.onstart=()=>{started=true;this.aquaSpeaking=true};
+     utter.onend=()=>done(true);
+     utter.onerror=e=>done(false,Error(e?.error||'speech synthesis failed'));
+     window.speechSynthesis.speak(utter);
+     setTimeout(()=>{if(!started)done(false,Error('صدای داخلی آیفون شروع نشد'))},3500);
+    });
+    return true;
+   }catch(e){
+    systemError=e;
+    this.aquaSpeaking=false;
+    this.aquaSpeechUtterance=null;
+    console.warn('Aqua Persian iOS voice unavailable; using server fallback',e);
+   }
+
+   if(document.hidden)return false;
+   let url=null;
    try{
     const headers={'Content-Type':'application/json'},csrf=this.cookie?.('aquagold_csrf');if(csrf)headers['X-CSRF-Token']=csrf;
     const response=await fetch('/api/aqua-ai/speak',{method:'POST',headers,credentials:'same-origin',cache:'no-store',body:JSON.stringify({text})});
-    if(!response.ok){let data={};try{data=await response.json()}catch{}throw Error(data.error||'صدای ElevenLabs آماده نشد')}
+    if(!response.ok){let data={};try{data=await response.json()}catch{}throw Error(data.error||'صدای جایگزین آریا آماده نشد')}
     const blob=await response.blob();if(!blob.size)throw Error('فایل صدای خالی دریافت شد');
+    if(document.hidden)return false;
     url=URL.createObjectURL(blob);
     let a=this.aquaPlayer;
     if(!a){a=new Audio();a.playsInline=true;a.preload='auto';this.aquaPlayer=a}
     a.pause();a.src=url;a.muted=false;a.volume=1;a.currentTime=0;a.load();
     await new Promise((resolve,reject)=>{
-     let started=false;
-     a.onplaying=()=>{started=true;this.aquaSpeaking=true};
-     a.onended=()=>{this.aquaSpeaking=false;resolve()};
-     a.onerror=()=>{this.aquaSpeaking=false;reject(Error('پخش صدای آریا روی آیفون ناموفق بود'))};
-     const p=a.play();if(p?.catch)p.catch(e=>{this.aquaSpeaking=false;reject(e)});
-     setTimeout(()=>{if(!started&&a.paused){this.aquaSpeaking=false;reject(Error('پخش صدا شروع نشد'))}},2500);
-    });
-    return true;
-   }catch(e){serverError=e;console.warn('Aqua server TTS unavailable; using iPhone speech',e)}finally{if(url)setTimeout(()=>URL.revokeObjectURL(url),1500)}
-
-   try{
-    if(!window.speechSynthesis||!window.SpeechSynthesisUtterance)throw Error('صدای داخلی آیفون در دسترس نیست');
-    window.speechSynthesis.cancel();
-    const voices=await getVoices();
-    const utter=new SpeechSynthesisUtterance(text);
-    utter.lang='fa-IR';utter.rate=.94;utter.pitch=1;utter.volume=1;
-    const fa=voices.find(v=>/^fa(?:-|_)/i.test(String(v.lang||'')))||voices.find(v=>/^ar(?:-|_)/i.test(String(v.lang||'')));
-    if(fa)utter.voice=fa;
-    await new Promise((resolve,reject)=>{
      let started=false,finished=false;
-     const done=(ok,err)=>{if(finished)return;finished=true;this.aquaSpeaking=false;ok?resolve():reject(err||Error('پخش صدای داخلی ناموفق بود'))};
-     utter.onstart=()=>{started=true;this.aquaSpeaking=true};
-     utter.onend=()=>done(true);
-     utter.onerror=e=>done(false,Error(e?.error||'speech synthesis failed'));
-     window.speechSynthesis.speak(utter);
-     setTimeout(()=>{if(!started)done(false,Error('صدای داخلی آیفون شروع نشد'))},3000);
+     const done=(ok,err)=>{if(finished)return;finished=true;this.aquaSpeaking=false;ok?resolve():reject(err||Error('پخش صدای جایگزین ناموفق بود'))};
+     a.onplaying=()=>{started=true;this.aquaSpeaking=true};
+     a.onended=()=>done(true);
+     a.onerror=()=>done(false,Error('پخش صدای آریا روی آیفون ناموفق بود'));
+     const p=a.play();if(p?.catch)p.catch(e=>done(false,e));
+     setTimeout(()=>{if(!started&&a.paused)done(false,Error('پخش صدا شروع نشد'))},2500);
     });
     return true;
-   }catch(fallbackError){
-    console.warn('Aqua iPhone speech fallback failed',fallbackError);
+   }catch(serverError){
+    console.warn('Aqua server TTS fallback failed',serverError);
     this.aquaSpeaking=false;
-    this.toast?.(serverError?.message||fallbackError?.message||'پخش صدای آریا ناموفق بود','error');
+    if(!document.hidden)this.toast?.(systemError?.message||serverError?.message||'پخش صدای آریا ناموفق بود','error');
     return false;
-   }
+   }finally{if(url)setTimeout(()=>URL.revokeObjectURL(url),1500)}
+  };
+
+  s.submitAquaVoiceTranscript=async function(spoken,runId){
+   const text=String(spoken||'').trim();if(!text)return false;
+   for(let i=0;i<12&&this.aquaBusy;i++)await sleep(150);
+   if(runId!==this.aquaVoiceRunId||this.aquaBusy)return false;
+   return await this.submitAquaText(text,'voice');
   };
 
   s.toggleAquaRecording=async function(){
    if(this.aquaRecording){
-    try{this.aquaRecorder?.requestData?.()}catch{}
-    try{this.aquaRecorder?.stop()}catch(e){this.aquaRecording=false;this.toast?.(e?.message||'توقف ضبط انجام نشد','error')}
+    try{if(this.aquaRecorder?.state&&this.aquaRecorder.state!=='inactive')this.aquaRecorder.stop()}catch(e){this.aquaRecording=false;this.toast?.(e?.message||'توقف ضبط انجام نشد','error')}
     return;
    }
    if(this.aquaTranscribing||this.aquaBusy||this.aquaVoiceSending||this.aquaVoiceSubmitActive)return;
@@ -207,14 +247,18 @@ VOICE_HOTFIX_JS = r"""
    let stream=null;
    try{
     try{await this.primeAquaAudio?.()}catch{}
-    stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
     const rec=new MediaRecorder(stream);
+    const runId=++this.aquaVoiceRunId;
+    let finalized=false;
     this.aquaChunks=[];this.aquaRecorder=rec;this.aquaVoiceSending=false;this.aquaVoiceSubmitActive=false;
     rec.ondataavailable=e=>{if(e.data&&e.data.size)this.aquaChunks.push(e.data)};
     rec.onerror=e=>this.toast?.(e?.error?.message||'خطای ضبط صدا','error');
     rec.onstop=async()=>{
+     if(finalized)return;finalized=true;
      this.aquaRecording=false;
      try{stream?.getTracks?.().forEach(t=>t.stop())}catch{}
+     if(runId!==this.aquaVoiceRunId)return;
      const chunks=[...(this.aquaChunks||[])];this.aquaChunks=[];
      if(!chunks.length){this.toast?.('صدایی ثبت نشد؛ دوباره امتحان کن','error');return}
      const type=rec.mimeType||chunks[0]?.type||'audio/webm';
@@ -229,9 +273,11 @@ VOICE_HOTFIX_JS = r"""
       let data={};try{data=await response.json()}catch{}
       if(!response.ok)throw Error(data.error||'تبدیل ویس به متن انجام نشد');
       const spoken=String(data.text||'').trim();if(!spoken)throw Error('حرفی از ویس تشخیص داده نشد');
+      if(runId!==this.aquaVoiceRunId)return;
       this.aquaInput=spoken;
       this.aquaTranscribing=false;this.aquaVoiceSending=false;this.aquaVoiceSubmitActive=true;
-      const sent=await this.submitAquaText(spoken,'voice');
+      this.toast?.('گرفتمش؛ دارم برای آریا می‌فرستم…','success');
+      const sent=await this.submitAquaVoiceTranscript(spoken,runId);
       this.aquaInput=sent?'':spoken;
       if(!sent)this.toast?.('متن ویس حفظ شد؛ ارسال خودکار انجام نشد','info');
      }catch(e){
