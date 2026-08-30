@@ -10,7 +10,7 @@ def inject_aqua_voice_hotfix(response):
         if request.path in {"/", "/index.html"} and response.mimetype == "text/html":
             response.direct_passthrough = False
             body = response.get_data(as_text=True)
-            tag = '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-voice4"></script>'
+            tag = '<script src="/aqua-voice-runtime-hotfix.js?v=20260831-dariush1"></script>'
             if "aqua-voice-runtime-hotfix.js" not in body:
                 pos = body.lower().find("</head>")
                 if pos >= 0:
