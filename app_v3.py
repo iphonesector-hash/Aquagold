@@ -849,9 +849,9 @@ def report_analytics():
         expenses = cur.fetchone()["expenses"]
         cur.execute("select coalesce(sum(amount),0)::bigint settled from company_settlements")
         settled = cur.fetchone()["settled"]
-        cur.execute("""select date_trunc('month',coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::date month,coalesce(sum(received_amount),0)::bigint received,coalesce(sum(company_share_amount),0)::bigint company_share,count(*)::int services from service_visits where coalesce(visited_at,created_at)>=now()-interval '15 months' group by 1 order by 1""")
+        cur.execute("""select date_trunc('month',coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::date as "month",coalesce(sum(received_amount),0)::bigint received,coalesce(sum(company_share_amount),0)::bigint company_share,count(*)::int services from service_visits where coalesce(visited_at,created_at)>=now()-interval '15 months' group by 1 order by 1""")
         months = [row_json(r) for r in cur.fetchall()]
-        cur.execute("select date_trunc('month',expense_date at time zone 'Asia/Tehran')::date month,coalesce(sum(amount),0)::bigint expenses from expenses where expense_date>=now()-interval '15 months' group by 1 order by 1")
+        cur.execute("select date_trunc('month',expense_date at time zone 'Asia/Tehran')::date as \"month\",coalesce(sum(amount),0)::bigint expenses from expenses where expense_date>=now()-interval '15 months' group by 1 order by 1")
         expense_map = {str(r["month"]): r["expenses"] for r in cur.fetchall()}
         for month in months:
             month["expenses"] = expense_map.get(str(month["month"]), 0)

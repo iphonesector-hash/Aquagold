@@ -1,5 +1,5 @@
 function app(){return{
-  token:false,authReady:false,
+  token:false,authReady:true,
   user:null,
   page:'dashboard',busy:false,error:'',online:navigator.onLine,offlineQueueCount:0,syncingOffline:false,
   stats:{today:{},total_customers:0},jobs:[],customers:[],expenses:[],settlements:[],
@@ -67,6 +67,7 @@ function app(){return{
   expenseCategory(c){return({goods:'خرید جنس/قطعه',fuel:'بنزین/سوخت',parking:'پارکینگ',tools:'ابزار/تعمیر',food:'غذا',other:'متفرقه'})[c]||c},
 
   cookie(name){let hit=document.cookie.split('; ').find(x=>x.startsWith(name+'='));return hit?decodeURIComponent(hit.slice(name.length+1)):''},
+  setAuthViewState(authenticated){if(document.body)document.body.dataset.authState=authenticated?'authenticated':'guest'},
   pendingLogout(){try{return localStorage.getItem('aq_logout_pending')==='1'}catch{return false}},
   async finishPendingLogout(){
     if(!this.pendingLogout()||!navigator.onLine)return false;
@@ -95,7 +96,7 @@ function app(){return{
     if(!safe&&queueable&&!opts.offlineReplay&&!navigator.onLine)return this.queueOffline(path,method,opts.body,headers);
     try{
       let r=await fetch('/api'+path,fetchOpts),d={};try{d=await r.json()}catch{}
-      if(r.status===401&&!['/login','/session','/logout'].includes(path)){this.token=false;this.user=null;let e=Error('نشست منقضی شد');e.status=401;throw e}
+      if(r.status===401&&!['/login','/session','/logout'].includes(path)){this.token=false;this.user=null;this.setAuthViewState(false);let e=Error('نشست منقضی شد');e.status=401;throw e}
       if(!r.ok){if(safe&&window.AquaOffline&&[502,503,504].includes(r.status)){let cached=await AquaOffline.cacheGet('/api'+path);if(cached!==undefined)return cached}if(!safe&&queueable&&!opts.offlineReplay&&[502,503,504].includes(r.status))return this.queueOffline(path,method,opts.body,headers);let e=new Error(d.error||'خطا در ارتباط با سرور');e.status=r.status;e.data=d;throw e}
       if(safe&&window.AquaOffline)await AquaOffline.cachePut('/api'+path,d);
       return d
@@ -109,6 +110,7 @@ function app(){return{
   async syncOfflineQueue(){if(this.syncingOffline||!navigator.onLine||!this.token||!window.AquaOffline)return;this.syncingOffline=true;try{let r=await AquaOffline.sync((path,opts)=>this.api(path,opts));this.offlineQueueCount=r.remaining;if(r.sent){await this.refreshAll();if(this.refreshCommerce)await this.refreshCommerce();alert(`${r.sent} ثبت آفلاین همگام شد`)}if(r.failed)alert('یک ثبت آفلاین نیاز به بررسی دارد')}finally{this.syncingOffline=false}},
   async init(){
     this.authReady=true;
+    this.setAuthViewState(false);
     try{
       try{this.offlineQueueCount=window.AquaOffline?await Promise.race([AquaOffline.count(),new Promise(resolve=>setTimeout(()=>resolve(0),1200))]):0}catch{this.offlineQueueCount=0}
       window.addEventListener('online',async()=>{this.online=true;if(await this.finishPendingLogout()){this.token=false;this.user=null;this.authReady=true;return}this.syncOfflineQueue()});
@@ -117,11 +119,11 @@ function app(){return{
         if(navigator.onLine)await this.finishPendingLogout();
         if(this.pendingLogout()){this.token=false;this.user=null;return}
       }
-      try{let d=await this.api('/session');if(!d?.user||(d.expires_at&&Date.parse(d.expires_at)<=Date.now()))throw Error('نشست آفلاین منقضی شده');await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',d);this.token=true;this.user=d.user;await this.refreshAll();this.locate(false).catch(()=>{});await this.syncOfflineQueue()}catch{this.token=false;this.user=null}
-    }catch(error){this.token=false;this.user=null;console.warn('AquaGold initialization fallback',error)}finally{this.authReady=true}
+      try{let d=await this.api('/session');if(!d?.user||(d.expires_at&&Date.parse(d.expires_at)<=Date.now()))throw Error('نشست آفلاین منقضی شده');await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',d);this.token=true;this.user=d.user;this.setAuthViewState(true);await this.refreshAll();this.locate(false).catch(()=>{});await this.syncOfflineQueue()}catch{this.token=false;this.user=null;this.setAuthViewState(false)}
+    }catch(error){this.token=false;this.user=null;this.setAuthViewState(false);console.warn('AquaGold initialization fallback',error)}finally{this.authReady=true}
   },
-  async login(){this.busy=true;this.error='';try{let d=await this.api('/login',{method:'POST',body:JSON.stringify(this.loginForm)});try{localStorage.removeItem('aq_logout_pending')}catch{}await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',{authenticated:true,user:d.user,expires_at:d.expires_at});this.token=true;this.user=d.user;await this.refreshAll()}catch(e){this.error=e.status===429?'تلاش‌های ورود بیش از حد است؛ کمی بعد دوباره امتحان کن':!navigator.onLine||!e.status?'برای ورود اولیه اتصال اینترنت لازم است':'نام کاربری یا رمز عبور نادرست است'}finally{this.busy=false;this.authReady=true}},
-  async logout(){if(this.busy)return;this.busy=true;let revoked=!this.token;try{if(this.token){await this.api('/logout',{method:'POST'});revoked=true}}catch{}if(window.AquaOffline)await AquaOffline.clear();try{if(revoked)localStorage.removeItem('aq_logout_pending');else localStorage.setItem('aq_logout_pending','1');localStorage.removeItem('aq_offline_user');localStorage.removeItem('aq_drafts_v4')}catch{}this.token=false;this.user=null;this.offlineQueueCount=0;this.authReady=true;sessionStorage.removeItem('aq_unlocked');this.busy=false},
+  async login(){this.busy=true;this.error='';try{let d=await this.api('/login',{method:'POST',body:JSON.stringify(this.loginForm)});try{localStorage.removeItem('aq_logout_pending')}catch{}await this.bindOfflineUser(d.user);if(window.AquaOffline)await AquaOffline.cachePut('/api/session',{authenticated:true,user:d.user,expires_at:d.expires_at});this.token=true;this.user=d.user;this.setAuthViewState(true);await this.refreshAll()}catch(e){this.setAuthViewState(false);this.error=e.status===429?'تلاش‌های ورود بیش از حد است؛ کمی بعد دوباره امتحان کن':!navigator.onLine||!e.status?'برای ورود اولیه اتصال اینترنت لازم است':'نام کاربری یا رمز عبور نادرست است'}finally{this.busy=false;this.authReady=true}},
+  async logout(){if(this.busy)return;this.busy=true;let revoked=!this.token;try{if(this.token){await this.api('/logout',{method:'POST'});revoked=true}}catch{}if(window.AquaOffline)await AquaOffline.clear();try{if(revoked)localStorage.removeItem('aq_logout_pending');else localStorage.setItem('aq_logout_pending','1');localStorage.removeItem('aq_offline_user');localStorage.removeItem('aq_drafts_v4')}catch{}this.token=false;this.user=null;this.setAuthViewState(false);this.offlineQueueCount=0;this.authReady=true;sessionStorage.removeItem('aq_unlocked');this.busy=false},
   async refreshAll(){
     let jq=encodeURIComponent(this.serviceSearch.trim()),cq=encodeURIComponent(this.customerSearch.trim());
     const safe=(promise,fallback)=>promise.catch(error=>{console.warn('AquaGold refresh fallback',error);return fallback});

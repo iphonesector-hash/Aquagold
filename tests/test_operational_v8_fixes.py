@@ -29,6 +29,15 @@ def test_company_settlements_match_report_range():
     assert "from company_settlements s where" in ops
 
 
+def test_postgres_report_aliases_are_explicit_and_safe():
+    app = src("app_v3.py")
+    ops = src("operational_v8.py")
+    assert '::date as "month"' in app
+    assert '::date as "day"' in ops
+    assert "::date month" not in app
+    assert "::date day" not in ops
+
+
 def test_recurring_uses_latest_completed_service_only():
     ops = src("operational_v8.py")
     assert "select distinct on (v.customer_id)" in ops

@@ -217,7 +217,7 @@ def ops_company_share():
     settle_clause, settle_params = _range_clause("s.settled_at")
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute(f"""
-            select (coalesce(v.visited_at,v.created_at) at time zone 'Asia/Tehran')::date day,
+            select (coalesce(v.visited_at,v.created_at) at time zone 'Asia/Tehran')::date as "day",
                    count(*)::int services,
                    coalesce(sum(v.received_amount),0)::bigint received,
                    coalesce(sum(v.company_share_amount),0)::bigint company_share,
@@ -226,7 +226,7 @@ def ops_company_share():
             group by 1 order by 1 desc
         """, params)
         days = [app_v3.row_json(r) for r in cur.fetchall()]
-        cur.execute(f"""select (s.settled_at at time zone 'Asia/Tehran')::date day,
+        cur.execute(f"""select (s.settled_at at time zone 'Asia/Tehran')::date as "day",
                                coalesce(sum(s.amount),0)::bigint settled
                         from company_settlements s where {settle_clause}
                         group by 1""", settle_params)

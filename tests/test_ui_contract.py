@@ -72,26 +72,38 @@ def test_lazy_modules_wait_for_authenticated_dom_before_marking_mounted():
 
 def test_v8_service_worker_caches_shell_but_never_api_and_handles_push():
     worker = source("sw.js")
-    assert "aquagold-v8-rc2-shell" in worker
+    index = source("index.html")
+    assert "aquagold-v8-hotfix2-shell" in worker
+    assert "20260830-hotfix2" in worker
+    assert "20260830-hotfix2" in index
     assert "caches.keys()" in worker and "caches.delete" in worker
     assert "url.pathname.startsWith('/api/')" in worker
     assert "cache.addAll(SHELL)" in worker
     assert "event.request.mode==='navigate'" in worker
+    assert "ignoreSearch:true" not in worker
+    assert "['script','style','worker'].includes(event.request.destination)" in worker
+    assert "fetch(event.request).then" in worker
     assert "showNotification" in worker
     assert "notificationclick" in worker
 
 
 def test_login_bootstrap_is_deterministic_and_session_verified():
+    base = source("ui-v3-base.js")
     finalizer = source("ui-v4-finalize.js")
-    assert "this.authReady=false;this.token=false;this.user=null" in finalizer
+    assert "token:false,authReady:true" in base
+    assert "this.authReady=true;this.token=false;this.user=null" in finalizer
+    assert "this.authReady=false;this.token=false;this.user=null" not in finalizer
     assert "fetch('/api/session'" in finalizer
     assert "credentials:'same-origin'" in finalizer
     assert "if(r.ok)" in finalizer
-    assert "this.user=d.user;this.token=true;this.page='dashboard'" in finalizer
+    assert "this.user=d.user;this.token=true;this.setAuthViewState(true);this.page='dashboard'" in finalizer
     assert "const r=await fetch('/api/login'" in finalizer
     assert "const verify=await fetch('/api/session'" in finalizer
     assert "if(!verify.ok||!session?.user)" in finalizer
-    assert "this.user=session.user;this.token=true;this.authReady=true;this.page='dashboard'" in finalizer
+    assert "this.user=session.user;this.token=true;this.setAuthViewState(true);this.authReady=true;this.page='dashboard'" in finalizer
+    assert "setAuthViewState(authenticated)" in base
+    assert "data-auth-state=\"guest\"" in source("index.html")
+    assert 'body[data-auth-state="authenticated"] .aq-shell-host{display:block!important}' in source("index.html")
     assert "location.reload" not in finalizer
     assert "location.replace" not in finalizer
 
