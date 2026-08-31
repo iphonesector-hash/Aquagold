@@ -35,10 +35,12 @@ import app_commerce  # noqa: E402,F401
 import app_routing  # noqa: E402,F401
 import aqua_ai  # noqa: E402,F401
 import aqua_groq_runtime_hotfix  # noqa: E402,F401
+import aqua_live_search_hotfix  # noqa: E402,F401
 import aqua_voice_runtime_hotfix  # noqa: E402,F401
 import bale_bridge  # noqa: E402,F401
 import bale_bootstrap  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
+import aqua_requested_ui_hotfix  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
