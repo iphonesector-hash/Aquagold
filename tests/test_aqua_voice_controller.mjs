@@ -23,7 +23,10 @@ function controllerHarness({api} = {}) {
     }
   }
   const synthesis = {
-    voices: [{name: 'Dariush', lang: 'fa-IR', voiceURI: 'com.apple.voice.compact.fa-IR.Dariush'}],
+    voices: [
+      {name: 'Dariush', lang: 'fa-IR', voiceURI: 'com.apple.voice.compact.fa-IR.Dariush'},
+      {name: 'Dariush (Enhanced)', lang: 'fa-IR', voiceURI: 'com.apple.voice.enhanced.fa-IR.Dariush'},
+    ],
     addEventListener() {},
     cancel() {},
     getVoices() { return this.voices; },
@@ -117,8 +120,20 @@ test('send primes system speech and speaks with Dariush', async () => {
   await new Promise(resolve => setTimeout(resolve, 20));
   const audible = spoken.find(item => item.volume === 1 && item.text === 'پاسخ آریا');
   assert.ok(audible);
-  assert.equal(audible.voice?.name, 'Dariush');
+  assert.equal(audible.voice?.name, 'Dariush (Enhanced)');
   assert.equal(audible.lang, 'fa-IR');
+  assert.equal(audible.rate, 0.9);
+  assert.equal(audible.pitch, 0.98);
+});
+
+
+test('speech removes emojis, markdown, and links before playback', async () => {
+  const {app, spoken} = controllerHarness();
+  app.aquaSettings.auto_speak = false;
+  assert.equal(await app.speakAqua('قیمت طلا 💰 **امروز** [منبع](https://example.com) 📈'), true);
+  const audible = spoken.find(item => item.volume === 1);
+  assert.ok(audible);
+  assert.equal(audible.text, 'قیمت طلا امروز منبع');
 });
 
 
