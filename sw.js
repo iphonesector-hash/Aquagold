@@ -9,8 +9,9 @@ self.addEventListener('activate', event => {
   })());
 });
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(fetch(event.request));
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  event.respondWith(fetch(request));
 });
 self.addEventListener('push', event => {
   let data = {title:'AquaGold', body:'اعلان جدید', url:'/', tag:'aquagold'};
