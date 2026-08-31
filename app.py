@@ -44,6 +44,7 @@ import bale_inbox_guard  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
+import aqua_ops_upgrade  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
