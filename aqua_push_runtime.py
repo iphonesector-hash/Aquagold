@@ -13,7 +13,7 @@ SUBJECT='https://aquagold-db.vercel.app'
 def _b64(v): return base64.urlsafe_b64encode(v).rstrip(b'=').decode()
 def _key():
     raw=hashlib.sha256((str(app_v3.app.secret_key)+'|aquagold-push-v1').encode()).digest()
-    return ec.derive_private_key((int.from_bytes,raw,'big')%(ORDER-1))+1,ec.SECP256R1())
+    return ec.derive_private_key((int.from_bytes(raw,'big')%(ORDER-1))+1,ec.SECP256R1())
 def _public(): return _b64(_key().public_key().public_bytes(serialization.Encoding.X962,serialization.PublicFormat.UncompressedPoint))
 def _private(): return _b64(_key().private_bytes(serialization.Encoding.DER,serialization.PrivateFormat.PKCS8,serialization.NoEncryption()))
 
