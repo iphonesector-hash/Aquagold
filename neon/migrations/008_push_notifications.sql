@@ -1,7 +1,8 @@
 -- AquaGold 008: Web Push subscriptions for new Bale work notifications.
+-- users.id is bigint in 001_core_app.sql, so push_subscriptions.user_id must match it.
 create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
+  user_id bigint not null references public.users(id) on delete cascade,
   endpoint text not null unique,
   p256dh text not null,
   auth text not null,
