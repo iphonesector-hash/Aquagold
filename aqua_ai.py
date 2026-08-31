@@ -28,11 +28,12 @@ DEFAULTS = {
     "voice_id": "JBFqnCBsd6RMkjVDRZzb",
     "tts_model": "eleven_v3",
     "stt_model": "scribe_v2",
-    "auto_speak": False,
+    "auto_speak": True,
 }
 SECRET_FIELDS = {"groq_api_key", "elevenlabs_api_key"}
 SAFE_FIELDS = set(DEFAULTS)
 MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,100}$")
+VOICE_UI_SETTINGS_VERSION = 2
 
 
 def _fernet():
@@ -67,6 +68,11 @@ def _load_settings(cur=None):
             cursor.close()
             context.__exit__(None, None, None)
     result = {**DEFAULTS, **{k: v for k, v in stored.items() if k in SAFE_FIELDS}}
+    # Legacy rows inherited auto_speak=False from an old default even though the
+    # UI always attempted to speak. Migrate that implicit value once; after an
+    # admin saves v2 settings, an explicit off choice remains respected.
+    if int(stored.get("voice_ui_settings_version") or 0) < VOICE_UI_SETTINGS_VERSION:
+        result["auto_speak"] = True
     for field in SECRET_FIELDS:
         result[field] = _decrypt(stored.get(f"{field}_cipher")) or os.getenv(field.upper(), "")
     return result
@@ -88,6 +94,7 @@ def _consume_secret_bootstrap():
             if payload.get("voice_id"):
                 current["voice_id"] = str(payload["voice_id"])
             stored = {key: current[key] for key in SAFE_FIELDS}
+            stored["voice_ui_settings_version"] = VOICE_UI_SETTINGS_VERSION
             for key in SECRET_FIELDS:
                 stored[f"{key}_cipher"] = _encrypt(current.get(key, "")) if current.get(key) else ""
             cur.execute("insert into app_settings(key,value,updated_at) values('aqua_ai',%s,now()) on conflict(key) do update set value=excluded.value,updated_at=now()", (app_v3.Jsonb(stored),))
@@ -294,6 +301,7 @@ def aqua_settings_set():
             if key in (data.get("clear_keys") or []):
                 next_settings[key] = ""
         stored = {key: next_settings[key] for key in SAFE_FIELDS}
+        stored["voice_ui_settings_version"] = VOICE_UI_SETTINGS_VERSION
         for key in SECRET_FIELDS:
             stored[f"{key}_cipher"] = _encrypt(next_settings.get(key, "")) if next_settings.get(key) else ""
         cur.execute(
