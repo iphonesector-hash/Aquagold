@@ -34,6 +34,8 @@ SECRET_FIELDS = {"groq_api_key", "elevenlabs_api_key"}
 SAFE_FIELDS = set(DEFAULTS)
 MODEL_RE = re.compile(r"^[A-Za-z0-9._/-]{1,100}$")
 VOICE_UI_SETTINGS_VERSION = 2
+LIVE_SEARCH_ASSETS = ("دلار", "طلا", "سکه", "ارز", "یورو", "درهم", "بیت کوین", "بیت‌کوین", "بورس")
+LIVE_SEARCH_MARKERS = ("قیمت", "نرخ", "امروز", "الان", "لحظه", "جدیدترین", "آخرین", "جستجو", "جست‌وجو", "در وب")
 
 
 def _fernet():
@@ -222,6 +224,22 @@ def _workspace_context(cur):
     return {"customers": customers, "products": products, "today_sales": sales, "today_received": received, "hourly": points[-12:]}
 
 
+def _needs_live_web_search(text):
+    value = str(text or "").strip().lower()
+    explicit_web = any(marker in value for marker in ("در وب", "جستجو", "جست‌وجو", "جدیدترین", "آخرین خبر"))
+    live_market = any(asset in value for asset in LIVE_SEARCH_ASSETS) and any(marker in value for marker in LIVE_SEARCH_MARKERS)
+    return explicit_web or live_market
+
+
+def _compound_payload(model, messages, *, live_search=False):
+    payload = {"model": model, "messages": messages, "temperature": 0.2}
+    if live_search and model in {"groq/compound", "groq/compound-mini"}:
+        # Price queries only need search results. Disabling Visit Website avoids a
+        # failed source page surfacing as a raw 404 in the assistant response.
+        payload["compound_custom"] = {"tools": {"enabled_tools": ["web_search"]}}
+    return payload
+
+
 def _groq_answer(settings, text, history, context):
     key = settings.get("groq_api_key")
     if not key:
@@ -232,7 +250,10 @@ def _groq_answer(settings, text, history, context):
         "today_sales": int(context.get("today_sales") or 0),
         "today_received": int(context.get("today_received") or 0),
     }
+    live_search = _needs_live_web_search(text)
     system_text = "تو آریا هستی؛ دستیار فارسی AquaGold و رفیق صمیمی کاربر. فارسی تهرانی، گرم، طبیعی و خودمونی حرف بزن؛ مثل یک دوست باهوش و قابل‌اعتماد، نه کارمند اداری. جواب‌ها روان و کوتاه باشند، گاهی از واژه‌های طبیعی مثل «آره»، «ببین»، «اوکی»، «حتماً» استفاده کن ولی لوس، مصنوعی یا بیش‌ازحد شوخ نباش. اگر موضوع جدی/مالی است دقیق بمان. تغییر دیتابیس را بدون تأیید کاربر انجام‌شده فرض نکن. وضعیت فعلی: " + json.dumps(compact_context, ensure_ascii=False)
+    if live_search:
+        system_text += " برای قیمت‌ها و اطلاعات لحظه‌ای حتماً از web_search استفاده کن، زمان و واحد قیمت را واضح بگو و اگر یک منبع خطا داد از نتیجه جست‌وجوی دیگری استفاده کن؛ هرگز قیمت روز را حدس نزن."
     messages = [{"role": "system", "content": system_text}]
     # Keep the request comfortably below upstream body limits. The current user
     # message is appended separately, so remove an identical trailing history item.
@@ -249,7 +270,25 @@ def _groq_answer(settings, text, history, context):
     messages.append({"role": "user", "content": str(text)[:1800]})
     endpoint = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {key}"}
-    payload = {"model": settings.get("brain_model") or "groq/compound", "messages": messages, "temperature": 0.2}
+    if live_search:
+        retry_messages = [
+            {"role": "system", "content": system_text[:1200]},
+            {"role": "user", "content": str(text)[:1000]},
+        ]
+        last_error = None
+        for index, model in enumerate(("groq/compound", "groq/compound-mini")):
+            try:
+                search_messages = messages if index == 0 else retry_messages
+                data = _post_json(endpoint, _compound_payload(model, search_messages, live_search=True), headers)
+                answer = str(data["choices"][0]["message"]["content"] or "").strip()
+                if answer:
+                    return answer
+            except (KeyError, IndexError, TypeError, RuntimeError) as exc:
+                last_error = exc
+                app_v3.logger.warning("aqua_live_search_failed model=%s detail=%s", model, str(exc)[:220])
+        raise RuntimeError("جست‌وجوی زنده موقتاً پاسخ نداد؛ چند لحظه بعد دوباره امتحان کن.") from last_error
+
+    payload = _compound_payload(settings.get("brain_model") or "groq/compound", messages)
     try:
         data = _post_json(endpoint, payload, headers)
     except RuntimeError as exc:
@@ -265,7 +304,7 @@ def _groq_answer(settings, text, history, context):
         # Compound can overflow internally on live-search/tool queries even with a tiny input.
         # Retry on compound-mini first, then a plain chat model so the user always gets a response.
         try:
-            data = _post_json(endpoint, {"model": "groq/compound-mini", "messages": retry_messages, "temperature": 0.2}, headers)
+            data = _post_json(endpoint, _compound_payload("groq/compound-mini", retry_messages), headers)
         except RuntimeError:
             data = _post_json(endpoint, {"model": "llama-3.3-70b-versatile", "messages": retry_messages, "temperature": 0.2}, headers)
     return data["choices"][0]["message"]["content"]

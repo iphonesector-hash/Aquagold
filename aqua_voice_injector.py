@@ -18,8 +18,12 @@ VOICE_UI_JS = r"""
  const previous=window.app;if(typeof previous!=='function')return;
  const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
  const pickMime=()=>{for(const value of ['audio/mp4','audio/webm;codecs=opus','audio/webm','audio/ogg;codecs=opus']){try{if(window.MediaRecorder?.isTypeSupported?.(value))return value}catch{}}return''};
- const splitSpeech=text=>{const clean=String(text||'').replace(/\s+/g,' ').trim();if(!clean)return[];const result=[];let current='';for(const sentence of clean.split(/(?<=[.!؟?!؛;،,])\s+/)){const next=(current+' '+sentence).trim();if(next.length<=170){current=next;continue}if(current)result.push(current);if(sentence.length<=170)current=sentence;else{for(let index=0;index<sentence.length;index+=160)result.push(sentence.slice(index,index+160));current=''}}if(current)result.push(current);return result};
- const choosePersianVoice=list=>{const voices=Array.isArray(list)?list:[],normalize=value=>String(value||'').toLowerCase();return voices.find(voice=>{const name=normalize(voice?.name),uri=normalize(voice?.voiceURI);return name.includes('dariush')||name.includes('darius')||uri.includes('dariush')||uri.includes('darius')||name.includes('داریوش')||uri.includes('داریوش')})||voices.find(voice=>/^fa(?:-|_)/i.test(String(voice?.lang||'')))||null};
+ const cleanSpeechText=value=>String(value||'')
+  .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1').replace(/https?:\/\/\S+/gi,' ')
+  .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\p{Regional_Indicator}\uFE0F\u200D\u20E3]/gu,' ')
+  .replace(/[`*_~#>|]+/g,' ').replace(/^\s*[-•]+\s*/gm,' ').replace(/\s+/g,' ').trim();
+ const splitSpeech=value=>{const clean=cleanSpeechText(value);if(!clean)return[];const result=[];let current='';for(const sentence of clean.split(/(?<=[.!؟?!؛;،,])\s+/)){const next=(current+' '+sentence).trim();if(next.length<=320){current=next;continue}if(current)result.push(current);if(sentence.length<=320)current=sentence;else{for(let index=0;index<sentence.length;index+=300)result.push(sentence.slice(index,index+300));current=''}}if(current)result.push(current);return result};
+ const choosePersianVoice=list=>{const voices=Array.isArray(list)?list:[],normalize=value=>String(value||'').toLowerCase(),score=voice=>{const name=normalize(voice?.name),uri=normalize(voice?.voiceURI),label=name+' '+uri;let value=/^fa(?:-|_)/i.test(String(voice?.lang||''))?20:0;if(label.includes('dariush')||label.includes('darius')||label.includes('داریوش'))value+=100;if(label.includes('premium'))value+=35;if(label.includes('enhanced'))value+=30;if(label.includes('compact'))value-=25;return value};return [...voices].filter(voice=>score(voice)>0).sort((a,b)=>score(b)-score(a))[0]||null};
  const style=document.createElement('style');style.id='aqua-voice-controller-style';style.textContent='.aqua-mic:disabled,.aqua-send:disabled{opacity:.55;cursor:wait;filter:saturate(.6)}.aqua-mic[data-phase="transcribing"],.aqua-mic[data-phase="submitting"]{animation:aquaVoiceWait 1s ease-in-out infinite}@keyframes aquaVoiceWait{50%{transform:scale(.94);opacity:.65}}';document.head.appendChild(style);
 
  window.app=function(){
@@ -65,12 +69,12 @@ VOICE_UI_JS = r"""
    this.stopAquaSpeech();const sequence=++this.aquaSpeechSeq,voice=this.refreshAquaDeviceVoices(),parts=splitSpeech(text);this.aquaSpeaking=true;
    const playPart=part=>new Promise((resolve,reject)=>{
     if(sequence!==this.aquaSpeechSeq||document.hidden){resolve(false);return}
-    const utterance=new Utterance(part);utterance.lang='fa-IR';if(voice)utterance.voice=voice;utterance.rate=.93;utterance.pitch=1;utterance.volume=1;this.aquaSpeechUtterance=utterance;
+    const utterance=new Utterance(part);utterance.lang='fa-IR';if(voice)utterance.voice=voice;utterance.rate=.9;utterance.pitch=.98;utterance.volume=1;this.aquaSpeechUtterance=utterance;
     let started=false,finished=false,timer=null;const finish=(ok,error)=>{if(finished)return;finished=true;if(timer)clearTimeout(timer);this.aquaSpeechUtterance=null;ok?resolve(true):reject(error||Error('speech failed'))};
     utterance.onstart=()=>{started=true;this.aquaSpeaking=true};utterance.onend=()=>finish(true);utterance.onerror=event=>finish(false,Error(event?.error||'speech failed'));
     try{synth.resume?.();synth.speak(utterance);timer=setTimeout(()=>{if(!started)finish(false,Error('speech did not start'))},6500)}catch(error){finish(false,error)}
    });
-   try{for(const part of parts){if(sequence!==this.aquaSpeechSeq||document.hidden)return false;await playPart(part);await sleep(25)}return true}
+   try{for(const part of parts){if(sequence!==this.aquaSpeechSeq||document.hidden)return false;await playPart(part)}return true}
    catch(error){if(sequence===this.aquaSpeechSeq&&!document.hidden){console.warn('Aqua Persian system speech failed',error);this.toast?.('صدای داریوش شروع نشد؛ یک‌بار دکمه بلندگوی همان پیام را بزن','info')}return false}
    finally{if(sequence===this.aquaSpeechSeq){this.aquaSpeaking=false;this.aquaSpeechUtterance=null}}
   };
@@ -164,7 +168,7 @@ def inject_aqua_voice_controller(response):
             )
             position = body.lower().find("</head>")
             if position >= 0:
-                tag = '<script src="/aqua-voice-ui.js?v=20260831-stable1"></script>'
+                tag = '<script src="/aqua-voice-ui.js?v=20260831-stable2"></script>'
                 body = body[:position] + tag + body[position:]
                 response.set_data(body)
                 response.headers["Content-Length"] = str(len(response.get_data()))

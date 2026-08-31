@@ -31,7 +31,7 @@ def test_legacy_auto_speak_is_migrated_but_future_off_choice_is_respected():
 
 def test_canonical_voice_controller_is_the_only_injected_runtime():
     controller = source("aqua_voice_injector.py")
-    assert 'src="/aqua-voice-ui.js?v=20260831-stable1"' in controller
+    assert 'src="/aqua-voice-ui.js?v=20260831-stable2"' in controller
     assert "aqua-voice-runtime-hotfix|aqua-ios-tts-patch|aqua-voice-ui" in controller
     voice_js = controller.split('VOICE_UI_JS = r"""', 1)[1].split('"""', 1)[0]
     assert "aqua-voice-ui-clean" not in voice_js
@@ -59,9 +59,27 @@ def test_ios_system_speech_is_primed_in_direct_user_gestures():
     assert "primeAquaDeviceSpeech" in controller
     assert "this.stopAquaSpeech();this.primeAquaDeviceSpeech();return this.submitAquaText" in controller
     assert "this.stopAquaSpeech();this.primeAquaDeviceSpeech();this.setAquaVoicePhase('starting')" in controller
-    assert "name.includes('dariush')" in controller
-    assert "name.includes('داریوش')" in controller
+    assert "label.includes('dariush')" in controller
+    assert "label.includes('داریوش')" in controller
     assert "splitSpeech(text)" in controller
+
+
+def test_speech_is_cleaned_and_prefers_enhanced_dariush():
+    controller = source("aqua_voice_injector.py")
+    assert "cleanSpeechText" in controller
+    assert "Extended_Pictographic" in controller
+    assert "label.includes('enhanced')" in controller
+    assert "label.includes('compact')" in controller
+    assert "utterance.rate=.9" in controller
+
+
+def test_live_market_queries_use_web_search_with_compound_fallback():
+    aqua = source("aqua_ai.py")
+    assert "def _needs_live_web_search" in aqua
+    assert '"دلار", "طلا", "سکه"' in aqua
+    assert '"enabled_tools": ["web_search"]' in aqua
+    assert '("groq/compound", "groq/compound-mini")' in aqua
+    assert "هرگز قیمت روز را حدس نزن" in aqua
 
 
 def test_device_speech_does_not_spend_elevenlabs_quota():
