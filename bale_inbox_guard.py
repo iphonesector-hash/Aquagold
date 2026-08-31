@@ -6,6 +6,7 @@ unwanted inbox jobs before they reach the core CRM/service ledger.
 """
 from __future__ import annotations
 
+import hmac
 import re
 
 from flask import Response, jsonify, request
@@ -33,7 +34,7 @@ def _flat(value):
 def is_aquagold_outbound(text, sender=None):
     """Return True for messages created by the bot/AquaGold itself."""
     sender = sender or {}
-    if sender.get("is_bot") is True:
+    if sender.get("is_bot"):
         return True
     value = _flat(text)
     if not value:
@@ -77,6 +78,10 @@ _original_webhook = app_v3.app.view_functions.get("bale_webhook")
 
 
 def _webhook_guard(secret):
+    settings = bale_bridge._load_settings()
+    expected = str(settings.get("webhook_secret") or "")
+    if not expected or not hmac.compare_digest(str(secret), expected):
+        return _original_webhook(secret)
     update = request.get_json(silent=True) or {}
     message, text, _chat, sender, _sender_name = bale_bridge._message_payload(update)
     if message and text and is_aquagold_outbound(text, sender):
@@ -88,10 +93,12 @@ if _original_webhook is not None:
     app_v3.app.view_functions["bale_webhook"] = _webhook_guard
 
 
-# Clean previously-looped report cards whenever the work inbox is opened.
+# Clean previously-looped report cards whenever an authenticated technician
+# opens the work inbox.
 _original_jobs_list = app_v3.app.view_functions.get("bale_jobs_list")
 
 
+@app_v3.roles_required("technician")
 def _jobs_list_with_cleanup():
     _cleanup_self_generated_jobs()
     return _original_jobs_list()
@@ -151,17 +158,18 @@ BALE_DISCARD_UI_JS = r"""
 
  const scan=()=>{
   document.querySelectorAll('.bale-job:not([data-discard-ready])').forEach(article=>{
-   article.dataset.discardReady='1';
    let scope=null;try{scope=window.Alpine?.$data?.(article)}catch{}
    const job=scope?.j;
-   if(!job||job.status==='completed')return;
+   if(!job)return;
+   article.dataset.discardReady='1';
+   if(job.status==='completed')return;
    const head=article.querySelector('.bale-job-head');if(!head)return;
    const button=document.createElement('button');button.type='button';button.className='bale-hard-delete';button.title='حذف کامل از کارهای بله';button.setAttribute('aria-label','حذف کامل از کارهای بله');button.textContent='×';
    button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();let live=null;try{live=window.Alpine?.$data?.(article)}catch{};const current=live?.j||job;const fn=live?.deleteBaleJob||scope?.deleteBaleJob;if(typeof fn==='function')fn.call(live||scope,current)});
    head.appendChild(button)
   })
  };
- const start=()=>{scan();const observer=new MutationObserver(scan);observer.observe(document.body,{childList:true,subtree:true})};
+ const start=()=>{scan();const observer=new MutationObserver(scan);observer.observe(document.body,{childList:true,subtree:true});setTimeout(scan,250);setTimeout(scan,900)};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 """
@@ -181,7 +189,7 @@ def inject_bale_discard_ui(response):
             if "/bale-discard-ui.js" not in body:
                 position = body.lower().find("</head>")
                 if position >= 0:
-                    tag = '<script src="/bale-discard-ui.js?v=20260831-1"></script>'
+                    tag = '<script src="/bale-discard-ui.js?v=20260831-2"></script>'
                     body = body[:position] + tag + body[position:]
                     response.set_data(body)
                     response.headers["Content-Length"] = str(len(response.get_data()))
