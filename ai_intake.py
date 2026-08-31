@@ -24,9 +24,28 @@ def _merge(local, ai):
     return out
 
 
+def _configured_groq_key():
+    """Reuse the same Groq key that Aqua AI uses in Settings.
+
+    Smart Intake historically checked only the Vercel GROQ_API_KEY env var,
+    while Aqua AI can store the key encrypted in app_settings. That made the
+    main assistant healthy but forced Smart Intake into local fallback.
+    """
+    key = os.getenv("GROQ_API_KEY", "").strip()
+    if key:
+        return key
+    try:
+        # Import lazily to avoid a startup import cycle (app -> ai_intake -> aqua_ai).
+        import aqua_ai
+
+        return str(aqua_ai._load_settings().get("groq_api_key") or "").strip()
+    except Exception:
+        return ""
+
+
 def parse_with_ai(text):
     local = parse_intake(text)
-    key = os.getenv("GROQ_API_KEY")
+    key = _configured_groq_key()
     if not key:
         local["parser"] = "local"
         return local
