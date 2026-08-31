@@ -9,8 +9,8 @@
    baleCompleteJob:null,baleCompleteAmount:'',baleSmartJob:null,baleCancelJob:null,baleCancelReason:'',baleBusy:false
   });
   if(!s.navs.some(n=>n.id==='bale-jobs'))s.navs.splice(Math.min(3,s.navs.length),0,{id:'bale-jobs',label:'کارهای جدید',icon:'services'});
-  s.loadBaleCounts=async function(){try{this.baleCounts=await this.api('/bale/jobs/counts')}catch(e){console.warn('Bale counts',e)}};
-  s.loadBaleJobs=async function(tab=null){if(tab)this.baleTab=tab;try{this.baleJobs=await this.api('/bale/jobs?status='+encodeURIComponent(this.baleTab))}catch(e){this.toast?.(e.message||'دریافت کارهای بله ناموفق بود','error')}};
+  s.loadBaleCounts=async function(){try{this.baleCounts=await this.api('/bale/jobs/counts?_='+Date.now())}catch(e){console.warn('Bale counts',e)}};
+  s.loadBaleJobs=async function(tab=null){if(tab)this.baleTab=tab;try{this.baleJobs=await this.api('/bale/jobs?status='+encodeURIComponent(this.baleTab)+'&_='+Date.now())}catch(e){this.toast?.(e.message||'دریافت کارهای بله ناموفق بود','error')}};
   s.loadBaleSettings=async function(){if(!this.canAdmin)return;try{let d=await this.api('/bale/settings');this.baleSettings={...this.baleSettings,...d};this.baleAllowedChats=(d.allowed_chat_ids||[]).join(', ')}catch(e){console.warn('Bale settings',e)}};
   s.saveBaleSettings=async function(){if(!this.canAdmin||this.baleBusy)return;this.baleBusy=true;try{let p={enabled:!!this.baleSettings.enabled,auto_reply:!!this.baleSettings.auto_reply,allowed_chat_ids:this.baleAllowedChats};if(this.baleToken.trim())p.bot_token=this.baleToken.trim();let d=await this.api('/bale/settings',{method:'PATCH',body:JSON.stringify(p)});this.baleSettings={...this.baleSettings,...d};this.baleToken='';this.baleAllowedChats=(d.allowed_chat_ids||[]).join(', ');this.toast?.('اتصال بله ذخیره و Webhook تنظیم شد','success')}catch(e){this.toast?.(e.message||'ذخیره اتصال بله ناموفق بود','error')}finally{this.baleBusy=false}};
   s.testBale=async function(){if(this.baleBusy)return;this.baleBusy=true;try{let d=await this.api('/bale/test',{method:'POST',body:'{}'}),name=d.bot?.username||d.bot?.first_name||d.bot?.id||'ربات';this.toast?.('اتصال بله برقرار است: '+name,'success')}catch(e){this.toast?.(e.message||'اتصال بله برقرار نشد','error')}finally{this.baleBusy=false}};
@@ -19,7 +19,21 @@
   s.confirmBaleComplete=async function(){if(!this.baleCompleteJob||this.baleBusy)return;let amount=String(this.baleCompleteAmount||'').replace(/[٬,،\s]/g,'').replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d));if(!/^\d+$/.test(amount))return this.toast?.('مبلغ دریافتی را وارد کن','error');this.baleBusy=true;try{await this.api('/bale/jobs/'+this.baleCompleteJob.id+'/complete',{method:'POST',body:JSON.stringify({received_amount:Number(amount)})});this.closeBaleComplete();await Promise.all([this.loadBaleJobs(),this.loadBaleCounts()]);this.refreshAll?.().catch(()=>{});this.toast?.('کار انجام‌شده و مبلغ ثبت شد','success')}catch(e){this.toast?.(e.message||'ثبت انجام کار ناموفق بود','error')}finally{this.baleBusy=false}};
   s.openBaleCancel=function(job){this.baleCancelJob=job;this.baleCancelReason='';setTimeout(()=>document.getElementById('baleCancelInput')?.focus(),80)};
   s.closeBaleCancel=function(){this.baleCancelJob=null;this.baleCancelReason=''};
-  s.confirmBaleCancel=async function(){if(!this.baleCancelJob||this.baleBusy)return;let reason=String(this.baleCancelReason||'').trim();if(!reason)return this.toast?.('علت کنسل شدن را بنویس','error');this.baleBusy=true;try{await this.api('/bale/jobs/'+this.baleCancelJob.id+'/cancel',{method:'POST',body:JSON.stringify({reason})});this.closeBaleCancel();await Promise.all([this.loadBaleJobs(),this.loadBaleCounts()]);this.toast?.('کار به کارهای کنسل‌شده منتقل شد','success')}catch(e){this.toast?.(e.message||'کنسل کردن کار ناموفق بود','error')}finally{this.baleBusy=false}};
+  s.confirmBaleCancel=async function(){
+   if(!this.baleCancelJob||this.baleBusy)return;
+   const cancelledId=String(this.baleCancelJob.id||'');
+   let reason=String(this.baleCancelReason||'').trim();
+   if(!reason)return this.toast?.('علت کنسل شدن را بنویس','error');
+   this.baleBusy=true;
+   try{
+    await this.api('/bale/jobs/'+cancelledId+'/cancel',{method:'POST',body:JSON.stringify({reason})});
+    this.baleJobs=(this.baleJobs||[]).filter(j=>String(j.id)!==cancelledId);
+    this.closeBaleCancel();
+    await Promise.all([this.loadBaleJobs(this.baleTab),this.loadBaleCounts()]);
+    if(this.baleTab==='new')this.baleJobs=(this.baleJobs||[]).filter(j=>String(j.id)!==cancelledId&&j.status==='new');
+    this.toast?.('کار به کارهای کنسل‌شده منتقل شد','success');
+   }catch(e){this.toast?.(e.message||'کنسل کردن کار ناموفق بود','error')}finally{this.baleBusy=false}
+  };
   s.baleStatusLabel=function(j){return j.status==='completed'?'انجام شده':j.status==='cancelled'?'کنسل شده':j.status==='review'?'نیاز به بررسی':'جدید'};
   s.baleMount=function(){
    if(this.baleMounted||!this.token)return;let main=document.querySelector('main.content');if(!main)return;
@@ -41,6 +55,16 @@
   const oldSmartRegister=s.registerSmart?.bind(s);
   s.registerSmart=async function(){
    const pending=this.baleSmartJob;
+   if(this.smartParsed){
+    const inputs=[...document.querySelectorAll('input[placeholder="نام خانوادگی"]')];
+    const visible=inputs.find(el=>el.offsetParent!==null);
+    const typed=String(visible?.value||'').trim();
+    if(typed)this.smartParsed.last_name=typed;
+    if(!String(this.smartParsed.last_name||'').trim()&&this.smartCustomerId){
+     const customer=(this.customers||[]).find(c=>String(c.id)===String(this.smartCustomerId));
+     if(customer)this.smartParsed.last_name=String(customer.last_name||customer.name||'').trim();
+    }
+   }
    await oldSmartRegister?.();
    if(pending && !this.smartText && !this.smartParsed){
     try{await this.api('/bale/jobs/'+pending.id+'/finalize',{method:'POST',body:'{}'});this.baleSmartJob=null;await Promise.all([this.loadBaleCounts?.(),this.loadBaleJobs?.('new')]);this.toast?.('کار بله از طریق ثبت هوشمند وارد سرویس‌های اصلی شد','success')}catch(e){this.toast?.(e.message||'سرویس ثبت شد ولی اتصال کار بله کامل نشد','error')}
