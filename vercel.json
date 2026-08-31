@@ -1,5 +1,30 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "git": {
+    "deploymentEnabled": {
+      "codex/aqua-ai-20260827": false,
+      "codex/aquagold-immediate-shell": false,
+      "codex/aquagold-production-hardening": false,
+      "codex/aquagold-production-secret-hotfix": false,
+      "codex/aquagold-ui-startup-timeout": false,
+      "farangis-integration": false,
+      "farangis-integration-v6": false,
+      "feature/aqua-notify-finance-report-20260831": false,
+      "feature/aquagold-finance-map-v3": false,
+      "feature/aquagold-smart-crm-map": false,
+      "feature/aquagold-usable-ui": false,
+      "feature/bale-management-reports-20260831": false,
+      "feature/bale-management-reports-clean-20260831": false,
+      "feature/smart-gps-after-analysis": false,
+      "fix/aria-ios-voice-send-20260831": false,
+      "fix/aria-natural-speech-live-search-20260831": false,
+      "fix/bale-self-report-delete-20260831": false,
+      "fix/stability-without-ui-regression": false,
+      "release-v8-qa": false,
+      "release-v8-qa-2": false,
+      "release-v8-work-final": false
+    }
+  },
   "functions": {
     "app.py": {
       "maxDuration": 60,
