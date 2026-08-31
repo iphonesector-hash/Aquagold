@@ -57,6 +57,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           for file in *.js; do node --check "$file"; done
+          node --test tests/test_aqua_voice_controller.mjs
           sha256sum -c vendor/SHA256SUMS
       - name: Verify critical production files
         run: |

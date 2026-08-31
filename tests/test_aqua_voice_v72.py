@@ -1,13 +1,76 @@
 from pathlib import Path
-R=Path(__file__).resolve().parents[1]
-def src(n): return (R/n).read_text(encoding="utf-8")
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def source(name):
+    return (ROOT / name).read_text(encoding="utf-8")
+
+
 def test_today_sales_alias_is_postgres_safe():
- a=src("aqua_ai.py"); assert "::int as hour_of_day" in a and 'point["hour"] = point.pop("hour_of_day"' in a
+    aqua = source("aqua_ai.py")
+    assert "::int as hour_of_day" in aqua
+    assert 'point["hour"] = point.pop("hour_of_day"' in aqua
+
+
 def test_tts_has_retry_and_persian_fallback_model():
- a=src("aqua_ai.py"); assert "eleven_multilingual_v2" in a and "aqua_tts_failed" in a and "range(3)" in a
-def test_voice_transcription_does_not_deadlock_send():
- j=src("aqua-ai.js"); assert "صدای شما به متن تبدیل شد" in j and "if(this.aquaInput)await this.sendAqua()" not in j
-def test_safari_tts_is_single_flight():
- j=src("aqua-ai.js"); assert "aquaSpeaking" in j and "آریا در حال صحبت است" in j and "this.aquaAudio" in j
-def test_v72_cache_bust():
- i=src("index.html"); assert "/aqua-ai.js?v=20260827-v72" in i
+    aqua = source("aqua_ai.py")
+    assert "eleven_multilingual_v2" in aqua
+    assert "aqua_tts_failed" in aqua
+    assert "range(3)" in aqua
+
+
+def test_legacy_auto_speak_is_migrated_but_future_off_choice_is_respected():
+    aqua = source("aqua_ai.py")
+    assert '"auto_speak": True' in aqua
+    assert "VOICE_UI_SETTINGS_VERSION = 2" in aqua
+    assert 'stored["voice_ui_settings_version"] = VOICE_UI_SETTINGS_VERSION' in aqua
+    assert 'if int(stored.get("voice_ui_settings_version") or 0) < VOICE_UI_SETTINGS_VERSION' in aqua
+
+
+def test_canonical_voice_controller_is_the_only_injected_runtime():
+    controller = source("aqua_voice_injector.py")
+    assert 'src="/aqua-voice-ui.js?v=20260831-stable1"' in controller
+    assert "aqua-voice-runtime-hotfix|aqua-ios-tts-patch|aqua-voice-ui" in controller
+    voice_js = controller.split('VOICE_UI_JS = r"""', 1)[1].split('"""', 1)[0]
+    assert "aqua-voice-ui-clean" not in voice_js
+
+
+def test_voice_commit_happens_only_after_send_guards_pass():
+    controller = source("aqua_voice_injector.py")
+    guard = controller.index("if(this.aquaSendLock||this.aquaBusy||this.aquaSendPromise)")
+    commit = controller.index("this.aquaVoiceCommittedRun=voiceRunId")
+    assert guard < commit
+    assert "return this.submitAquaText(text,'voice',runId)" in controller
+    assert "this.aquaInput=sent?'':spoken" in controller
+
+
+def test_send_path_has_feedback_and_exactly_one_inflight_promise():
+    controller = source("aqua_voice_injector.py")
+    assert "aquaSendPromise:null" in controller
+    assert "پیام قبلی هنوز در حال ارسال است" in controller
+    assert "if(this.aquaSendPromise===operation)this.aquaSendPromise=null" in controller
+    assert "if(!this.aquaInput)this.aquaInput=text" in controller
+
+
+def test_ios_system_speech_is_primed_in_direct_user_gestures():
+    controller = source("aqua_voice_injector.py")
+    assert "primeAquaDeviceSpeech" in controller
+    assert "this.stopAquaSpeech();this.primeAquaDeviceSpeech();return this.submitAquaText" in controller
+    assert "this.stopAquaSpeech();this.primeAquaDeviceSpeech();this.setAquaVoicePhase('starting')" in controller
+    assert "name.includes('dariush')" in controller
+    assert "name.includes('داریوش')" in controller
+    assert "splitSpeech(text)" in controller
+
+
+def test_device_speech_does_not_spend_elevenlabs_quota():
+    controller = source("aqua_voice_injector.py")
+    voice_js = controller.split('VOICE_UI_JS = r"""', 1)[1].split('"""', 1)[0]
+    assert "/api/aqua-ai/speak" not in voice_js
+    assert "window.speechSynthesis" in voice_js
+
+
+def test_current_aqua_asset_is_cache_busted():
+    index = source("index.html")
+    assert "/aqua-ai.js?v=20260827-v76" in index
