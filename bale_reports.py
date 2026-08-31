@@ -224,7 +224,7 @@ def _report_rows(start_local, end_local):
                    coalesce(s.visited_at,s.created_at) as activity_at
                from service_visits s
                join customers_v2 c on c.id=s.customer_id
-               where s.status='completed'
+               where s.status not in ('cancelled','scheduled')
                  and coalesce(s.visited_at,s.created_at)>=%s
                  and coalesce(s.visited_at,s.created_at)<%s""",
             (start_utc, end_utc),
