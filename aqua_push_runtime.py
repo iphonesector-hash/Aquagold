@@ -20,7 +20,7 @@ def _private(): return _b64(_key().private_bytes(serialization.Encoding.DER,seri
 def _schema():
     with app_v3.get_db() as db, db.cursor() as c:
         c.execute("""create table if not exists push_subscriptions(
-          id uuid primary key default gen_random_uuid(),user_id uuid not null references users(id) on delete cascade,
+          id uuid primary key default gen_random_uuid(),user_id bigint not null references users(id) on delete cascade,
           endpoint text not null unique,p256dh text not null,auth text not null,user_agent text,active boolean not null default true,
           created_at timestamptz not null default now(),updated_at timestamptz not null default now(),last_success_at timestamptz,last_error text)""")
         c.execute("create index if not exists push_subscriptions_active_idx on push_subscriptions(active) where active=true")
@@ -55,7 +55,7 @@ def push_public_key(): return jsonify({'public_key':_public()})
 def push_status():
     _schema()
     with app_v3.get_db() as db, db.cursor() as c:
-        c.execute('select count(*)::int n from push_subscriptions where active=true and user_id=%s::uuid',(request.current_user['user_id'],)); n=int((c.fetchone() or {}).get('n') or 0)
+        c.execute('select count(*)::int n from push_subscriptions where active=true and user_id=%s',(request.current_user['user_id'],)); n=int((c.fetchone() or {}).get('n') or 0)
     return jsonify({'supported':True,'active':n>0,'subscriptions':n})
 
 @app_v3.app.post('/api/push/subscribe')
@@ -64,7 +64,7 @@ def push_subscribe():
     _schema(); d=request.get_json(silent=True) or {}; k=d.get('keys') or {}; endpoint=str(d.get('endpoint') or '').strip(); p=str(k.get('p256dh') or '').strip(); a=str(k.get('auth') or '').strip()
     if not endpoint.startswith('https://') or not p or not a: return jsonify({'error':'اشتراک Push معتبر نیست'}),400
     with app_v3.get_db() as db, db.cursor() as c:
-        c.execute("""insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent,active,updated_at) values(%s::uuid,%s,%s,%s,%s,true,now())
+        c.execute("""insert into push_subscriptions(user_id,endpoint,p256dh,auth,user_agent,active,updated_at) values(%s,%s,%s,%s,%s,true,now())
           on conflict(endpoint) do update set user_id=excluded.user_id,p256dh=excluded.p256dh,auth=excluded.auth,user_agent=excluded.user_agent,active=true,last_error=null,updated_at=now() returning id""",
           (request.current_user['user_id'],endpoint[:4000],p[:1000],a[:1000],(request.user_agent.string or '')[:500])); row=c.fetchone()
     return jsonify({'ok':True,'id':str(row['id'])})
@@ -74,8 +74,8 @@ def push_subscribe():
 def push_unsubscribe():
     _schema(); endpoint=str((request.get_json(silent=True) or {}).get('endpoint') or '').strip()
     with app_v3.get_db() as db, db.cursor() as c:
-        if endpoint: c.execute('update push_subscriptions set active=false,updated_at=now() where user_id=%s::uuid and endpoint=%s',(request.current_user['user_id'],endpoint))
-        else: c.execute('update push_subscriptions set active=false,updated_at=now() where user_id=%s::uuid',(request.current_user['user_id'],))
+        if endpoint: c.execute('update push_subscriptions set active=false,updated_at=now() where user_id=%s and endpoint=%s',(request.current_user['user_id'],endpoint))
+        else: c.execute('update push_subscriptions set active=false,updated_at=now() where user_id=%s',(request.current_user['user_id'],))
     return jsonify({'ok':True})
 
 _old=app_v3.app.view_functions.get('bale_webhook')
