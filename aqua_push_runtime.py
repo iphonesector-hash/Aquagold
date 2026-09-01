@@ -1,4 +1,4 @@
-"""Web Push for new Bale jobs and client UI injection."""
+"""Web Push for new Bale jobs."""
 from __future__ import annotations
 import base64, hashlib, json
 from cryptography.hazmat.primitives import serialization
@@ -88,15 +88,3 @@ def _webhook(secret):
     except Exception as e: app_v3.logger.warning('bale_push_hook_failed: %s',e)
     return r
 if _old: app_v3.app.view_functions['bale_webhook']=_webhook
-
-@app_v3.app.after_request
-def _inject(response):
-    try:
-        if request.path in {'/','/index.html'} and response.mimetype=='text/html':
-            response.direct_passthrough=False; body=response.get_data(as_text=True)
-            if '/aqua-system-polish.js' not in body:
-                p=body.lower().find('</head>')
-                if p>=0: response.set_data(body[:p]+'<script src="/aqua-system-polish.js?v=20260831-2"></script>'+body[p:]); response.headers['Content-Length']=str(len(response.get_data()))
-            response.headers['Cache-Control']='no-store, max-age=0'
-    except Exception as e: app_v3.logger.warning('push_ui_inject_failed: %s',e)
-    return response

@@ -1,12 +1,13 @@
 import aqua_ai
+import aqua_live_search_hotfix  # noqa: F401
 
 
-def test_live_price_query_forces_browser_search_and_retries_smaller_gpt_oss(monkeypatch):
+def test_live_price_query_forces_web_search_and_retries_compound_mini(monkeypatch):
     calls = []
 
     def fake_post(url, payload, headers, timeout=45):
         calls.append(payload)
-        if payload["model"] == "openai/gpt-oss-120b":
+        if payload["model"] == "groq/compound":
             raise RuntimeError("سرویس جست‌وجوی زنده موقتاً پاسخ نداد")
         return {"choices": [{"message": {"content": "قیمت لحظه‌ای با منبع معتبر"}}]}
 
@@ -19,9 +20,8 @@ def test_live_price_query_forces_browser_search_and_retries_smaller_gpt_oss(monk
     )
 
     assert answer == "قیمت لحظه‌ای با منبع معتبر"
-    assert [call["model"] for call in calls] == ["openai/gpt-oss-120b", "openai/gpt-oss-20b"]
-    assert all(call["tool_choice"] == "required" for call in calls)
-    assert all(call["tools"] == [{"type": "browser_search"}] for call in calls)
+    assert [call["model"] for call in calls] == ["groq/compound", "groq/compound-mini"]
+    assert all(call["compound_custom"] == {"tools": {"enabled_tools": ["web_search"]}} for call in calls)
 
 
 def test_non_live_chat_keeps_configured_model(monkeypatch):
