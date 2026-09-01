@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]; then exit 0; else exit 1; fi",
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ] || printf '%s' \"$VERCEL_GIT_COMMIT_MESSAGE\" | grep -q '\\[aqua-manual-preview\\]'; then exit 1; else exit 0; fi",
   "git": {
     "deploymentEnabled": {
       "codex/aqua-ai-20260827": false,
