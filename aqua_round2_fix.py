@@ -1,8 +1,9 @@
 """Second isolated AquaGold QA layer.
 
 Narrow scope:
-- make Aqua chat use current Groq Compound systems without the retired Llama fallback;
+- remove the retired Llama fallback while preserving a healthy configured chat model;
 - recognise Persian live-search wording/typos such as «دولار» and internet capability questions;
+- route live requests through Groq Compound Web Search with a bounded retry;
 - inject the branch-only UI repair script for Bale inbox, red map pins, fixed charts and iPhone Push access.
 """
 from __future__ import annotations
@@ -11,7 +12,7 @@ import json
 import re
 import time
 
-from flask import Response, request
+from flask import request
 
 import app_v3
 import aqua_ai
@@ -31,13 +32,14 @@ CAPABILITY_MARKERS = (
     "به اینترنت دسترسی داری", "اینترنت داری", "به وب دسترسی داری", "وب داری",
     "میتونی سرچ کنی", "می تونی سرچ کنی", "میتونی جستجو کنی", "می تونی جستجو کنی",
 )
+RETIRED_MODELS = {"llama-3.3-70b-versatile"}
+MODEL_ERROR_MARKERS = ("model_not_found", "does not exist", "do not have access", "you do not have access")
 
 
 def _norm(value):
     text = str(value or "").translate(FA_NORMALISE).replace("\u200c", " ").lower()
     text = re.sub(r"\s+", " ", text).strip()
-    text = text.replace("دولار", "دلار").replace("دالر", "دلار")
-    return text
+    return text.replace("دولار", "دلار").replace("دالر", "دلار")
 
 
 def _capability_question(text):
@@ -77,7 +79,7 @@ def _context_summary(context):
 def _messages(text, history, context, *, live=False):
     system = (
         "تو آریا، دستیار فارسی AquaGold هستی. فارسی تهرانی، کوتاه، طبیعی و دقیق جواب بده. "
-        "تو در AquaGold به جست‌وجوی واقعی وب از طریق Groq Compound دسترسی داری؛ هرگز نگو اینترنت یا وب در دسترس نیست. "
+        "تو در AquaGold برای اطلاعات لحظه‌ای به جست‌وجوی واقعی وب از طریق Groq Compound دسترسی داری؛ هرگز نگو اینترنت یا وب در دسترس نیست. "
         "اگر سؤال به اطلاعات روز یا قیمت لحظه‌ای مربوط است فقط پس از جست‌وجوی واقعی جواب بده و چیزی را حدس نزن. "
         "تغییر اطلاعات CRM را بدون تأیید کاربر انجام‌شده فرض نکن. "
         "وضعیت برنامه: " + json.dumps(_context_summary(context), ensure_ascii=False)
@@ -98,7 +100,7 @@ def _messages(text, history, context, *, live=False):
     return messages
 
 
-def _compound_call(settings, model, messages, *, live=False, timeout=24):
+def _groq_call(settings, model, messages, *, live=False, timeout=24):
     payload = {"model": model, "messages": messages, "temperature": 0.2}
     if live:
         payload["compound_custom"] = {"tools": {"enabled_tools": ["web_search"]}}
@@ -112,9 +114,12 @@ def _compound_call(settings, model, messages, *, live=False, timeout=24):
     answer = str(message.get("content") or "").strip()
     if not answer:
         raise RuntimeError("پاسخ آریا خالی بود")
-    if live and not message.get("executed_tools"):
-        raise RuntimeError("Web Search اجرا نشد")
     return answer
+
+
+def _is_model_error(exc):
+    detail = str(exc).lower()
+    return any(marker in detail for marker in MODEL_ERROR_MARKERS)
 
 
 def _fast_groq_answer(settings, text, history, context):
@@ -127,14 +132,23 @@ def _fast_groq_answer(settings, text, history, context):
 
         live = _needs_live_web_search(text)
         messages = _messages(text, history, context, live=live)
-        attempts = (
-            ("groq/compound-mini", 22),
-            ("groq/compound", 32),
-        )
+        if live:
+            # Keep the established, tested route: full Compound first for the most
+            # capable search synthesis, then a bounded Compound Mini retry.
+            attempts = (("groq/compound", 20), ("groq/compound-mini", 20))
+        else:
+            configured = str((settings or {}).get("brain_model") or "").strip()
+            primary = "groq/compound-mini" if not configured or configured in RETIRED_MODELS else configured
+            attempts = ((primary, 20),)
+            if primary not in {"groq/compound-mini", "groq/compound"}:
+                attempts += (("groq/compound-mini", 20),)
+            if "groq/compound" not in {model for model, _ in attempts}:
+                attempts += (("groq/compound", 24),)
+
         last_error = None
-        for model, timeout in attempts:
+        for index, (model, timeout) in enumerate(attempts):
             try:
-                return _compound_call(settings, model, messages, live=live, timeout=timeout)
+                return _groq_call(settings, model, messages, live=live, timeout=timeout)
             except (RuntimeError, KeyError, IndexError, TypeError) as exc:
                 last_error = exc
                 app_v3.logger.warning(
@@ -143,6 +157,12 @@ def _fast_groq_answer(settings, text, history, context):
                     live,
                     str(exc)[:300],
                 )
+                # For normal chat, only abandon a configured model immediately when
+                # it is actually unavailable. Other transient errors still get one
+                # current Compound fallback, never the retired Llama model.
+                if not live and index == 0 and not _is_model_error(exc) and len(attempts) == 1:
+                    break
+
         if live:
             raise RuntimeError("جست‌وجوی زنده آریا پاسخ نداد؛ چند لحظه بعد دوباره امتحان کن.") from last_error
         raise RuntimeError("سرویس آریا پاسخ نداد؛ چند لحظه بعد دوباره امتحان کن.") from last_error
@@ -168,7 +188,7 @@ def inject_aqua_round2(response):
         if '/aqua-round2.js?' not in body:
             body = body.replace(
                 "</body>",
-                '<script src="/aqua-round2.js?v=20260901-2"></script></body>',
+                '<script src="/aqua-round2.js?v=20260901-3"></script></body>',
                 1,
             )
             response.set_data(body)
