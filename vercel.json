@@ -1,7 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": {
+      "*": false,
+      "fix/aqua-scoped-stability-20260901": true
+    }
   },
   "functions": {
     "app.py": {
