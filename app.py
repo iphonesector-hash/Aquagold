@@ -5,7 +5,8 @@ from uuid import UUID
 
 from flask import jsonify, request
 
-# Ensure production can start even when Vercel has no explicit session secret yet.
+# Ensure production and isolated Vercel previews share the stable runtime secret
+# required to read encrypted provider settings.
 import aquagold_secret_bootstrap  # noqa: E402,F401
 import app_v3
 from aquagold_validation import text as valid_text
@@ -46,6 +47,8 @@ import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
 import aqua_push_runtime  # noqa: E402,F401
 import aqua_finance_runtime  # noqa: E402,F401
+# Last, branch-scoped presentation overrides. Main is intentionally untouched.
+import aqua_scoped_branch_hotfix  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
