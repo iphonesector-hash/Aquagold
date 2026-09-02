@@ -1,9 +1,11 @@
 """Keep AquaGold's encryption/session secret stable across Vercel runtimes.
 
-A dedicated AQUAGOLD_SECRET_KEY remains preferred. When it is unavailable on a
-Vercel deployment, derive the same deterministic secret from the already-secret
-database connection string. This keeps encrypted Aqua AI provider settings
-readable on manual Preview deployments without exposing or copying API keys.
+A dedicated AQUAGOLD_SECRET_KEY remains preferred. Isolated Preview databases
+have different Neon connection strings, so deriving the encryption key from the
+Preview URL would make settings cloned from Production unreadable. Preview may
+therefore receive either AQUAGOLD_SHARED_SECRET_KEY (preferred) or the main DB
+URL in AQUAGOLD_MAIN_DATABASE_URL as stable secret material. No secret is stored
+in the repository.
 """
 
 import hashlib
@@ -21,6 +23,17 @@ def _database_url():
     return ""
 
 
+def _stable_secret_material():
+    shared = os.getenv("AQUAGOLD_SHARED_SECRET_KEY", "")
+    if len(shared) >= 32:
+        return "shared:" + shared
+    main_url = os.getenv("AQUAGOLD_MAIN_DATABASE_URL", "")
+    if main_url.startswith(("postgres://", "postgresql://")):
+        return "database:" + main_url
+    database_url = _database_url()
+    return "database:" + database_url if database_url else ""
+
+
 def ensure_runtime_secret():
     env = (os.getenv("AQUAGOLD_ENV") or os.getenv("VERCEL_ENV") or "development").lower()
     is_vercel = bool(os.getenv("VERCEL")) or env in {"production", "prod", "preview"}
@@ -31,11 +44,15 @@ def ensure_runtime_secret():
     if len(current) >= 32 and current != "aquagold-local-dev-only":
         return
 
-    database_url = _database_url()
-    if not database_url:
+    material = _stable_secret_material()
+    if not material:
         return
 
-    derived = hashlib.sha256(f"aquagold-session-v1:{database_url}".encode("utf-8")).hexdigest()
+    if material.startswith("shared:"):
+        derived = material.split(":", 1)[1]
+    else:
+        database_url = material.split(":", 1)[1]
+        derived = hashlib.sha256(f"aquagold-session-v1:{database_url}".encode("utf-8")).hexdigest()
     os.environ["AQUAGOLD_SECRET_KEY"] = derived
 
 
