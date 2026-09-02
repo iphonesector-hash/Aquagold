@@ -1,6 +1,8 @@
 """Branch-only runtime guards and reporting helpers for the Aqua QA branch."""
 from __future__ import annotations
 
+import re
+
 from flask import jsonify, request
 
 import app_v3
@@ -25,6 +27,17 @@ def _aqua_round3_idempotency_begin(user_id):
 app_v3._idempotency_begin = _aqua_round3_idempotency_begin
 
 
+def _payment_key(value):
+    method = str(value or "").strip().lower().replace("\u200c", " ")
+    if method == "cash" or "نقد" in method:
+        return "cash"
+    if method == "transfer" or re.search(r"کارت\s*به\s*کارت|card.?to.?card", method):
+        return "transfer"
+    if method in {"card", "pos"} or re.search(r"کارت\s*خوان|کارتخوان|card.?reader", method):
+        return "card"
+    return "other"
+
+
 @app_v3.app.get("/api/reports/payment-methods")
 @app_v3.token_required
 def aqua_round3_payment_methods():
@@ -43,8 +56,7 @@ def aqua_round3_payment_methods():
     totals = {"cash": 0, "transfer": 0, "card": 0, "other": 0}
     counts = {"cash": 0, "transfer": 0, "card": 0, "other": 0}
     for row in rows:
-        method = str(row.get("method") or "other").lower()
-        key = method if method in totals else "other"
+        key = _payment_key(row.get("method"))
         totals[key] += int(row.get("amount") or 0)
         counts[key] += int(row.get("services") or 0)
     return jsonify({"totals": totals, "counts": counts})
