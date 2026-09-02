@@ -65,6 +65,8 @@ import aqua_targeted_fix  # noqa: E402,F401
 import aqua_targeted_modal_fix  # noqa: E402,F401
 # Final branch-only guard: keep long Aqua AI provider calls outside mutation idempotency locks.
 import aqua_round3_backend_fix  # noqa: E402,F401
+# Round 6: persist Smart payment method, fixed six-month service due dates and due Push.
+import aqua_round6_user_fixes  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
