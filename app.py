@@ -53,6 +53,8 @@ import aqua_scoped_branch_hotfix  # noqa: E402,F401
 import aqua_branch_final_fix  # noqa: E402,F401
 # Second isolated QA layer: fast Compound web search plus Bale/map/chart/Push UI repairs.
 import aqua_round2_fix  # noqa: E402,F401
+# Targeted requested fixes: real service edits, expense edit, fast live prices, dashboard share amount.
+import aqua_targeted_fix  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
