@@ -50,7 +50,12 @@
     const localPaymentTotals=state.paymentMethodTotals?.bind(state);
     const baseFinanceRender=state.renderRequestedFinanceCharts?.bind(state);
     const baseWorkPins=state.renderRequestedWorkPins?.bind(state);
+    const baseToggleRecording=state.toggleAquaRecording?.bind(state);
+    const baseStopSpeech=state.stopAquaSpeech?.bind(state);
     state.aquaPaymentBreakdown=null;
+    state.aquaNativeRecognition=null;
+    state.aquaNativeTranscript='';
+    if(state.aquaSettings)state.aquaSettings.auto_speak=true;
 
     state.loadInsightsRequested=async function(){
       let data={};
@@ -92,6 +97,75 @@
         }
         return this.aquaWorkMarkers;
       }catch(error){console.warn('Aqua work pins fallback',error);return baseWorkPins?.()}
+    };
+
+    // iOS speech priming is created inside the user's tap. Do not cancel that
+    // primed session again just before the asynchronous Aria response is spoken.
+    state.stopAquaSpeech=function(){
+      const synth=window.speechSynthesis;
+      if(this.aquaSpeechPrimed&&!this.aquaSpeaking&&synth&&!synth.speaking&&!synth.pending){
+        this.aquaSpeechSeq=Number(this.aquaSpeechSeq||0)+1;
+        this.aquaSpeechUtterance=null;
+        this.aquaSpeechPrimeUtterance=null;
+        return;
+      }
+      return baseStopSpeech?.();
+    };
+
+    // Prefer Safari's own Persian speech recognition on iPhone. It gives us the
+    // transcript while the user is speaking, then submits it exactly once when
+    // recording stops. Other browsers keep the existing MediaRecorder/STT path.
+    state.toggleAquaRecording=async function(){
+      const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+      if(!Recognition)return baseToggleRecording?.();
+      const phase=this.aquaVoicePhase||'idle';
+      if(phase==='recording'&&this.aquaNativeRecognition){
+        this.setAquaVoicePhase?.('stopping');
+        try{this.aquaNativeRecognition.stop()}catch{this.setAquaVoicePhase?.('idle')}
+        return;
+      }
+      if(phase!=='idle'){
+        this.toast?.(phase==='transcribing'?'دارم صدات رو به متن تبدیل می‌کنم…':phase==='submitting'?'دارم همون پیام رو برای آریا می‌فرستم…':'ضبط قبلی هنوز کامل نشده…','info');
+        return;
+      }
+      if(this.aquaBusy||this.aquaSendLock||this.aquaSendPromise){this.toast?.('آریا هنوز در حال پاسخ‌دادنه','info');return}
+      this.stopAquaSpeech?.();this.primeAquaDeviceSpeech?.();
+      const recognition=new Recognition(),runId=++this.aquaVoiceSeq;
+      let finalText='',finished=false,started=false;
+      this.aquaNativeRecognition=recognition;this.aquaNativeTranscript='';
+      recognition.lang='fa-IR';recognition.continuous=true;recognition.interimResults=true;recognition.maxAlternatives=1;
+
+      const finish=async()=>{
+        if(finished)return;finished=true;
+        this.aquaNativeRecognition=null;
+        if(runId!==this.aquaVoiceSeq){this.setAquaVoicePhase?.('idle');return}
+        const spoken=text(finalText||this.aquaNativeTranscript||this.aquaInput);
+        if(!spoken){this.setAquaVoicePhase?.('idle');this.toast?.('حرفی از صدات تشخیص داده نشد؛ دوباره امتحان کن','info');return}
+        this.aquaInput=spoken;this.setAquaVoicePhase?.('submitting');
+        this.toast?.('گرفتمش؛ دارم برای آریا می‌فرستم…','success');
+        const sent=await this.submitAquaVoiceTranscript?.(spoken,runId);
+        this.aquaInput=sent?'':spoken;
+        this.setAquaVoicePhase?.('idle');
+        if(!sent)this.toast?.('متن ویس در کادر ماند؛ دکمه ارسال را بزن','info');
+      };
+
+      recognition.onstart=()=>{started=true;this.setAquaVoicePhase?.('recording')};
+      recognition.onresult=event=>{
+        let interim='';
+        for(let i=event.resultIndex;i<event.results.length;i++){
+          const piece=text(event.results[i]?.[0]?.transcript);if(!piece)continue;
+          if(event.results[i].isFinal)finalText=(finalText+' '+piece).trim();else interim=(interim+' '+piece).trim();
+        }
+        this.aquaNativeTranscript=(finalText+' '+interim).trim();
+        this.aquaInput=this.aquaNativeTranscript;
+      };
+      recognition.onerror=event=>{
+        const code=String(event?.error||'');
+        if(!['aborted','no-speech'].includes(code))this.toast?.(code==='not-allowed'?'اجازه میکروفن آیفون داده نشده':'تشخیص صدای آیفون خطا داد؛ دوباره امتحان کن','error');
+      };
+      recognition.onend=()=>void finish();
+      try{this.setAquaVoicePhase?.('starting');recognition.start()}
+      catch(error){this.aquaNativeRecognition=null;this.setAquaVoicePhase?.('idle');if(!started)return baseToggleRecording?.();throw error}
     };
 
     return state;
