@@ -42,6 +42,8 @@ import bale_bridge  # noqa: E402,F401
 import bale_bootstrap  # noqa: E402,F401
 import bale_reports  # noqa: E402,F401
 import bale_inbox_guard  # noqa: E402,F401
+# Preview only: mirror live new/review Bale jobs read-only from main when configured.
+import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
@@ -51,6 +53,8 @@ import aqua_finance_runtime  # noqa: E402,F401
 import aqua_scoped_branch_hotfix  # noqa: E402,F401
 # Final isolated QA layer: live web/model recovery, exact clock, layout and Push test.
 import aqua_branch_final_fix  # noqa: E402,F401
+# Register Round 4 before Round 3 so Flask's reverse after_request order emits Round 4 last.
+import aqua_round4_ui_fix  # noqa: E402,F401
 # Register the final UI injector before Round 2 so its script is emitted after Round 2.
 import aqua_round3_ui_fix  # noqa: E402,F401
 # Second isolated QA layer: fast Compound web search plus Bale/map/chart/Push UI repairs.
