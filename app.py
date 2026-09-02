@@ -51,6 +51,8 @@ import aqua_finance_runtime  # noqa: E402,F401
 import aqua_scoped_branch_hotfix  # noqa: E402,F401
 # Final isolated QA layer: live web/model recovery, exact clock, layout and Push test.
 import aqua_branch_final_fix  # noqa: E402,F401
+# Register the final UI injector before Round 2 so its script is emitted after Round 2.
+import aqua_round3_ui_fix  # noqa: E402,F401
 # Second isolated QA layer: fast Compound web search plus Bale/map/chart/Push UI repairs.
 import aqua_round2_fix  # noqa: E402,F401
 # Targeted requested fixes: real service edits, expense edit, fast live prices, dashboard share amount.
