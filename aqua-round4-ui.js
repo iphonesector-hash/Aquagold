@@ -84,15 +84,15 @@
 
   window.app=function(){
     const state=previous();
-    const oldAnalyze=state.analyzeSmart?.bind(state);
-    const oldRegister=state.registerSmart?.bind(state);
-    const oldGo=state.go?.bind(state);
-    const oldRefresh=state.refreshAll?.bind(state);
+    const oldAnalyze=state.analyzeSmart;
+    const oldRegister=state.registerSmart;
+    const oldGo=state.go;
+    const oldRefresh=state.refreshAll;
 
     state.normalizeRequestedSmartChoices=function(){normalizeChoices(this)};
 
     state.analyzeSmart=async function(...args){
-      const result=await oldAnalyze?.(...args);
+      const result=await oldAnalyze?.apply(this,args);
       normalizeChoices(this);
       setTimeout(()=>mountSmartControls(this),30);
       setTimeout(()=>mountSmartControls(this),180);
@@ -106,7 +106,7 @@
         if(!['cash','transfer','card'].includes(clean(this.smartParsed.payment_method))){this.toast?.('روش پرداخت را انتخاب کن','error');return false}
         if(this.smartParsed.service_type==='دیگر'&&!clean(this.smartParsed.description)){this.toast?.('برای «دیگر» توضیحات سرویس را بنویس','error');return false}
       }
-      return oldRegister?.(...args);
+      return oldRegister?.apply(this,args);
     };
 
     state.renderRound4Finance=async function(){
@@ -187,7 +187,7 @@
     };
 
     state.go=async function(page,...args){
-      const result=await oldGo?.(page,...args);
+      const result=await oldGo?.apply(this,[page,...args]);
       if(page==='smart')setTimeout(()=>mountSmartControls(this),80);
       if(page==='dashboard')setTimeout(mountLatestServicesAccordion,80);
       if(page==='insights')setTimeout(()=>this.loadInsightsRequested?.(),80);
@@ -197,7 +197,7 @@
     };
 
     state.refreshAll=async function(...args){
-      const result=await oldRefresh?.(...args);
+      const result=await oldRefresh?.apply(this,args);
       if(this.page==='dashboard')setTimeout(mountLatestServicesAccordion,40);
       if(this.page==='smart')setTimeout(()=>mountSmartControls(this),40);
       if(this.page==='insights')await this.loadInsightsRequested?.();
