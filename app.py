@@ -49,6 +49,9 @@ import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
 import aqua_push_runtime  # noqa: E402,F401
 import aqua_finance_runtime  # noqa: E402,F401
+# Test-2 presentation injector is registered before later UI injectors so Flask's
+# reverse after_request order makes it the final visual layer in the HTML response.
+import aqua_test2_visual_v2  # noqa: E402,F401
 # Branch-scoped presentation overrides. Main is intentionally untouched.
 import aqua_scoped_branch_hotfix  # noqa: E402,F401
 # Final isolated QA layer: live web/model recovery, exact clock, layout and Push test.
