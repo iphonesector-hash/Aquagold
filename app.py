@@ -5,7 +5,8 @@ from uuid import UUID
 
 from flask import jsonify, request
 
-# Ensure production can start even when Vercel has no explicit session secret yet.
+# Ensure production and isolated Vercel previews share the stable runtime secret
+# required to read encrypted provider settings.
 import aquagold_secret_bootstrap  # noqa: E402,F401
 import app_v3
 from aquagold_validation import text as valid_text
@@ -41,11 +42,33 @@ import bale_bridge  # noqa: E402,F401
 import bale_bootstrap  # noqa: E402,F401
 import bale_reports  # noqa: E402,F401
 import bale_inbox_guard  # noqa: E402,F401
+# Preview only: mirror live new/review Bale jobs read-only from main when configured.
+import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
 import aqua_push_runtime  # noqa: E402,F401
 import aqua_finance_runtime  # noqa: E402,F401
+# Read-only bearer-authenticated surface for the Aqua Aria custom GPT.
+import aqua_gpt_actions  # noqa: E402,F401
+# Branch-scoped presentation overrides. Main is intentionally untouched.
+import aqua_scoped_branch_hotfix  # noqa: E402,F401
+# Final isolated QA layer: live web/model recovery, exact clock, layout and Push test.
+import aqua_branch_final_fix  # noqa: E402,F401
+# Register Round 4 before Round 3 so Flask's reverse after_request order emits Round 4 last.
+import aqua_round4_ui_fix  # noqa: E402,F401
+# Register the final UI injector before Round 2 so its script is emitted after Round 2.
+import aqua_round3_ui_fix  # noqa: E402,F401
+# Second isolated QA layer: fast Compound web search plus Bale/map/chart/Push UI repairs.
+import aqua_round2_fix  # noqa: E402,F401
+# Targeted requested fixes: real service edits, expense edit, fast live prices, dashboard share amount.
+import aqua_targeted_fix  # noqa: E402,F401
+# Keep targeted edit modals outside the hidden login view.
+import aqua_targeted_modal_fix  # noqa: E402,F401
+# Final branch-only guard: keep long Aqua AI provider calls outside mutation idempotency locks.
+import aqua_round3_backend_fix  # noqa: E402,F401
+# QA B1/B2/B3: Aria session-safe chat, payment-method unlabeled totals, service-backed invoices.
+import aqua_qa_backend_fix  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")

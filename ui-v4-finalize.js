@@ -14,6 +14,11 @@ window.app=function(){
   }
  };
 
+ const aquaAbort=(ms)=>{
+  try{if(typeof AbortSignal!=='undefined'&&typeof AbortSignal.timeout==='function')return AbortSignal.timeout(ms)}catch{}
+  const c=new AbortController();setTimeout(()=>{try{c.abort()}catch{}},ms);return c.signal;
+ };
+
  // Canonical navigation kernel. Page changes are immediate; data refreshes never block taps.
  s.go=function(p){
   const page=String(p||'dashboard');
@@ -38,7 +43,7 @@ window.app=function(){
   window.addEventListener('online',()=>{this.online=true});
   window.addEventListener('offline',()=>{this.online=false});
   try{
-   const r=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+   const r=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'},signal:aquaAbort(8000)});
    if(r.ok){const d=await r.json();if(d?.user){
     this.user=d.user;this.token=true;this.page='dashboard';this.authReady=true;
     requestAnimationFrame(()=>{try{this.mountEnhancements?.()}catch(e){console.error('enhancements',e)};try{this.mountCommerce?.()}catch(e){console.error('commerce',e)};try{this.mountAquaAI?.()}catch(e){console.error('aqua-ai',e)};try{this.baleMount?.()}catch(e){console.error('bale',e)};});
@@ -46,15 +51,15 @@ window.app=function(){
     return;
    }}
   }catch(e){console.warn('AquaGold session bootstrap',e)}
-  this.authReady=true;
+  finally{this.authReady=true;try{window.AquaBoot?.hide?.()}catch{}}
  };
  s.login=async function(){
   if(this.busy)return;this.busy=true;this.error='';
   try{
-   const r=await fetch('/api/login',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(this.loginForm)});
+   const r=await fetch('/api/login',{method:'POST',credentials:'same-origin',cache:'no-store',headers:{'Content-Type':'application/json','Accept':'application/json'},body:JSON.stringify(this.loginForm),signal:aquaAbort(8000)});
    let d={};try{d=await r.json()}catch{}
    if(!r.ok){let e=Error(d.error||'ورود انجام نشد');e.status=r.status;throw e}
-   const verify=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});
+   const verify=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'},signal:aquaAbort(8000)});
    let session={};try{session=await verify.json()}catch{}
    if(!verify.ok||!session?.user){let e=Error('سشن ورود تأیید نشد');e.status=verify.status||0;throw e}
    try{localStorage.removeItem('aq_logout_pending')}catch{}

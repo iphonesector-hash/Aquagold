@@ -1,4 +1,4 @@
-const CACHE = 'aquagold-network-only-recovery-20260831-push';
+const CACHE = 'aquagold-network-only-recovery-20260901-stable1';
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => {
@@ -9,8 +9,9 @@ self.addEventListener('activate', event => {
   })());
 });
 self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(fetch(event.request));
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  event.respondWith(fetch(request));
 });
 self.addEventListener('push', event => {
   let data = {title:'AquaGold', body:'اعلان جدید', url:'/', tag:'aquagold'};
