@@ -2,7 +2,7 @@
 
 B1: answer read-only "how many services today" from DB; never 401 a chat
     that already passed session checks.
-B2: payment-method totals include unlabeled amounts as other; skip cancelled.
+B2: payment-method totals match analytics.received; unlabeled/empty methods go to other.
 B3: if the invoices table is empty, list invoices derived from service_visits.
 """
 from __future__ import annotations
@@ -31,8 +31,49 @@ _MUTATION_MARKERS = (
 _COUNT_MARKERS = ("چند سرویس", "چندتا سرویس", "تعداد سرویس", "چند تا سرویس")
 
 
+_UNLABELED_METHODS = {"", "other", "سایر", "نامشخص", "unknown", "none", "null"}
+_PAYMENT_LABELS = {
+    "cash": "نقد",
+    "transfer": "کارت به کارت",
+    "card": "کارتخوان",
+    "other": "سایر",
+}
+
+
 def classify_payment_method(value):
     return aqua_round3_backend_fix._payment_key(value)
+
+
+def allocate_payment_totals(rows, received_total=None):
+    totals = {"cash": 0, "transfer": 0, "card": 0, "other": 0}
+    counts = {"cash": 0, "transfer": 0, "card": 0, "other": 0}
+    unlabeled_amount = 0
+    unlabeled_count = 0
+    for row in rows or []:
+        method = row.get("method")
+        key = classify_payment_method(method)
+        amount = int(row.get("amount") or 0)
+        services = int(row.get("services") or 0)
+        totals[key] += amount
+        counts[key] += services
+        raw = str(method or "").strip().lower()
+        if key == "other" and raw in _UNLABELED_METHODS:
+            unlabeled_amount += amount
+            unlabeled_count += services
+    allocated = int(sum(totals.values()))
+    received = int(received_total if received_total is not None else allocated)
+    return {
+        "totals": totals,
+        "counts": counts,
+        "received_total": received,
+        "unlabeled": {"amount": unlabeled_amount, "services": unlabeled_count},
+        "aligned": allocated == received,
+        "labels": dict(_PAYMENT_LABELS),
+        "cards": [
+            {"key": key, "label": _PAYMENT_LABELS[key], "amount": totals[key]}
+            for key in ("cash", "transfer", "card", "other")
+        ],
+    }
 
 
 def is_readonly_service_count(text):
@@ -148,6 +189,7 @@ if _ORIGINAL_CHAT is not None:
 
 @app_v3.token_required
 def _payment_methods_with_unlabeled():
+    # Same population as report_analytics totals.received: every service_visit.
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute(
             """
@@ -155,7 +197,6 @@ def _payment_methods_with_unlabeled():
                    count(*)::int services,
                    coalesce(sum(received_amount), 0)::bigint amount
             from service_visits
-            where coalesce(status, '') not in ('cancelled', 'scheduled')
             group by 1
             order by amount desc
             """
@@ -165,32 +206,10 @@ def _payment_methods_with_unlabeled():
             """
             select coalesce(sum(received_amount), 0)::bigint received
             from service_visits
-            where coalesce(status, '') not in ('cancelled', 'scheduled')
             """
         )
         received_total = int((cur.fetchone() or {}).get("received") or 0)
-    totals = {"cash": 0, "transfer": 0, "card": 0, "other": 0}
-    counts = {"cash": 0, "transfer": 0, "card": 0, "other": 0}
-    unlabeled_amount = 0
-    unlabeled_count = 0
-    for row in rows:
-        method = row.get("method")
-        key = classify_payment_method(method)
-        amount = int(row.get("amount") or 0)
-        services = int(row.get("services") or 0)
-        totals[key] += amount
-        counts[key] += services
-        if key == "other" and str(method or "").strip().lower() in {"", "other", "سایر", "نامشخص"}:
-            unlabeled_amount += amount
-            unlabeled_count += services
-    return jsonify(
-        {
-            "totals": totals,
-            "counts": counts,
-            "received_total": received_total,
-            "unlabeled": {"amount": unlabeled_amount, "services": unlabeled_count},
-        }
-    )
+    return jsonify(allocate_payment_totals(rows, received_total))
 
 
 app_v3.app.view_functions["aqua_round3_payment_methods"] = _payment_methods_with_unlabeled

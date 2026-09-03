@@ -1,4 +1,5 @@
 from aqua_qa_backend_fix import (
+    allocate_payment_totals,
     classify_payment_method,
     is_readonly_service_count,
     service_visit_to_invoice,
@@ -39,3 +40,28 @@ def test_service_visit_invoice_shape():
     assert invoice["item_count"] == 1
     assert invoice["items"][0]["line_total"] == 68300000
     assert invoice["invoice_no"].startswith("SV-")
+
+
+def test_unlabeled_received_matches_analytics_total():
+    rows = [{"method": "other", "amount": 68300000, "services": 12}]
+    payload = allocate_payment_totals(rows, received_total=68300000)
+    assert payload["totals"] == {"cash": 0, "transfer": 0, "card": 0, "other": 68300000}
+    assert sum(payload["totals"].values()) == payload["received_total"] == 68300000
+    assert payload["aligned"] is True
+    assert payload["unlabeled"]["amount"] == 68300000
+    assert payload["cards"][-1] == {"key": "other", "label": "سایر", "amount": 68300000}
+
+
+def test_named_methods_stay_out_of_other():
+    rows = [
+        {"method": "نقدی", "amount": 1000, "services": 1},
+        {"method": "کارتخوان", "amount": 2000, "services": 1},
+        {"method": "کارت به کارت", "amount": 3000, "services": 1},
+        {"method": "", "amount": 4000, "services": 1},
+    ]
+    payload = allocate_payment_totals(rows, received_total=10000)
+    assert payload["totals"]["cash"] == 1000
+    assert payload["totals"]["card"] == 2000
+    assert payload["totals"]["transfer"] == 3000
+    assert payload["totals"]["other"] == 4000
+    assert payload["aligned"] is True
