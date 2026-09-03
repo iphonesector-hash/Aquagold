@@ -203,45 +203,8 @@
       return state;
     }
     state.toggleAquaRecording=async function(){
-      const phase=this.aquaVoicePhase||'idle';
-      if(phase==='recording'){
-        this.setAquaVoicePhase?.('stopping');
-        try{const recorder=this.aquaRecorder;if(recorder&&recorder.state!=='inactive'){try{recorder.requestData?.()}catch{}recorder.stop()}else this.setAquaVoicePhase?.('idle')}
-        catch(error){this.setAquaVoicePhase?.('idle');this.toast?.(error?.message||'توقف ضبط انجام نشد','error')}
-        return;
-      }
-      if(phase!=='idle')return this.toast?.(phase==='transcribing'?'دارم صدات رو به متن تبدیل می‌کنم…':phase==='submitting'?'دارم همون پیام رو برای آریا می‌فرستم…':'ضبط قبلی هنوز کامل نشده…','info');
-      if(this.aquaBusy||this.aquaSendLock||this.aquaSendPromise)return this.toast?.('آریا هنوز در حال پاسخ‌دادنه','info');
-      if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)return baseToggleRecording?.();
-      this.stopAquaSpeech?.();this.primeAquaDeviceSpeech?.();this.setAquaVoicePhase?.('starting');
-      let stream=null;
-      try{
-        stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
-        const mime=pickMime(),recorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream),runId=++this.aquaVoiceSeq,parts=[];let finalized=false;
-        this.aquaRecorder=recorder;this.aquaStream=stream;
-        recorder.ondataavailable=event=>{if(event.data?.size)parts.push(event.data)};
-        recorder.onerror=event=>this.toast?.(event?.error?.message||'خطای ضبط صدا','error');
-        recorder.onstop=async()=>{
-          if(finalized)return;finalized=true;try{stream?.getTracks?.().forEach(track=>track.stop())}catch{};
-          if(runId!==this.aquaVoiceSeq){this.setAquaVoicePhase?.('idle');return}
-          this.setAquaVoicePhase?.('transcribing');
-          try{
-            if(!parts.length)throw Error('صدایی ثبت نشد؛ دوباره امتحان کن');
-            const type=recorder.mimeType||mime||parts[0]?.type||'audio/webm',blob=new Blob(parts,{type});if(blob.size<256)throw Error('ویس خیلی کوتاه بود؛ دوباره امتحان کن');
-            const extension=type.includes('mp4')?'m4a':type.includes('ogg')?'ogg':type.includes('wav')?'wav':'webm',form=new FormData();form.append('audio',blob,'aqua.'+extension);
-            const headers={},csrf=this.cookie?.('aquagold_csrf');if(csrf)headers['X-CSRF-Token']=csrf;
-            const response=await fetch('/api/aqua-ai/transcribe',{method:'POST',body:form,headers,credentials:'same-origin',cache:'no-store'});let data={};try{data=await response.json()}catch{};
-            if(!response.ok)throw Error(data.error||'تبدیل ویس به متن انجام نشد');
-            const spoken=clean(data.text);if(!spoken)throw Error('حرفی از ویس تشخیص داده نشد');if(runId!==this.aquaVoiceSeq)return;
-            this.aquaInput=spoken;this.setAquaVoicePhase?.('submitting');this.toast?.('گرفتمش؛ دارم برای آریا می‌فرستم…','success');
-            let sent=false;try{sent=!!await this.submitAquaVoiceTranscript?.(spoken,runId)}catch{}
-            if(!sent){try{await this.sendAqua?.(spoken);sent=true}catch{}}
-            this.aquaInput=sent?'':spoken;if(!sent)this.toast?.('متن ویس در کادر ماند؛ دکمه ارسال را بزن','info');
-          }catch(error){this.toast?.(error?.message||'ویس پردازش نشد','error')}
-          finally{this.setAquaVoicePhase?.('idle');this.aquaRecorder=null;this.aquaStream=null}
-        };
-        recorder.start(250);this.setAquaVoicePhase?.('recording');this.toast?.('آریا گوش می‌ده؛ وقتی تموم شد دوباره میکروفن رو بزن','info');
-      }catch(error){try{stream?.getTracks?.().forEach(track=>track.stop())}catch{};this.aquaRecorder=null;this.aquaStream=null;this.setAquaVoicePhase?.('idle');this.toast?.(error?.name==='NotAllowedError'?'اجازه میکروفن آیفون داده نشده':error?.message||'میکروفن شروع نشد','error')}
+      if(typeof baseToggleRecording==='function')return await baseToggleRecording();
+      this.toast?.('ضبط صدا آماده نیست','error');
     };
 
     return state;

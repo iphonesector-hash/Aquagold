@@ -30,7 +30,7 @@ def inject_aqua_round4_ui(response):
         if '/aqua-round5-user-fixes.js?' not in body:
             body = body.replace(
                 "</body>",
-                '<script src="/aqua-round5-user-fixes.js?v=20260902-1"></script></body>',
+                '<script src="/aqua-round5-user-fixes.js?v=20260903-aria2"></script></body>',
                 1,
             )
         response.set_data(body)

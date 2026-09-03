@@ -220,8 +220,27 @@ def _workspace_context(cur):
     customers = cur.fetchone()["customers"]
     cur.execute("select count(*)::int products from products where is_active=true")
     products = cur.fetchone()["products"]
+    cur.execute("select count(*)::int services from service_visits where coalesce(status,'')<>'cancelled'")
+    services = cur.fetchone()["services"]
+    cur.execute(
+        """
+        select count(*)::int today_services
+        from service_visits
+        where coalesce(status,'')<>'cancelled'
+          and (coalesce(visited_at,created_at) at time zone 'Asia/Tehran')::date=(now() at time zone 'Asia/Tehran')::date
+        """
+    )
+    today_services = cur.fetchone()["today_services"]
     points, sales, received = _today_sales(cur)
-    return {"customers": customers, "products": products, "today_sales": sales, "today_received": received, "hourly": points[-12:]}
+    return {
+        "customers": customers,
+        "products": products,
+        "services": services,
+        "today_services": today_services,
+        "today_sales": sales,
+        "today_received": received,
+        "hourly": points[-12:],
+    }
 
 
 def _needs_live_web_search(text):
@@ -247,11 +266,13 @@ def _groq_answer(settings, text, history, context):
     compact_context = {
         "customers": int(context.get("customers") or 0),
         "products": int(context.get("products") or 0),
+        "services": int(context.get("services") or 0),
+        "today_services": int(context.get("today_services") or 0),
         "today_sales": int(context.get("today_sales") or 0),
         "today_received": int(context.get("today_received") or 0),
     }
     live_search = _needs_live_web_search(text)
-    system_text = "تو آریا هستی؛ دستیار فارسی AquaGold و رفیق صمیمی کاربر. فارسی تهرانی، گرم، طبیعی و خودمونی حرف بزن؛ مثل یک دوست باهوش و قابل‌اعتماد، نه کارمند اداری. جواب‌ها روان و کوتاه باشند، گاهی از واژه‌های طبیعی مثل «آره»، «ببین»، «اوکی»، «حتماً» استفاده کن ولی لوس، مصنوعی یا بیش‌ازحد شوخ نباش. اگر موضوع جدی/مالی است دقیق بمان. تغییر دیتابیس را بدون تأیید کاربر انجام‌شده فرض نکن. وضعیت فعلی: " + json.dumps(compact_context, ensure_ascii=False)
+    system_text = "تو آریا هستی؛ دستیار فارسی AquaGold و رفیق صمیمی کاربر. فارسی تهرانی، گرم، طبیعی و خودمونی حرف بزن؛ مثل یک دوست باهوش و قابل‌اعتماد، نه کارمند اداری. جواب‌ها روان و کوتاه باشند، گاهی از واژه‌های طبیعی مثل «آره»، «ببین»، «اوکی»، «حتماً» استفاده کن ولی لوس، مصنوعی یا بیش‌ازحد شوخ نباش. اگر موضوع جدی/مالی است دقیق بمان. تعداد سرویس را از services/today_services بگو، نه از products. تغییر دیتابیس را بدون تأیید کاربر انجام‌شده فرض نکن. وضعیت فعلی: " + json.dumps(compact_context, ensure_ascii=False)
     if live_search:
         system_text += " برای قیمت‌ها و اطلاعات لحظه‌ای حتماً از web_search استفاده کن، زمان و واحد قیمت را واضح بگو و اگر یک منبع خطا داد از نتیجه جست‌وجوی دیگری استفاده کن؛ هرگز قیمت روز را حدس نزن."
     messages = [{"role": "system", "content": system_text}]

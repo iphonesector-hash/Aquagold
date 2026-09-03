@@ -26,7 +26,13 @@ LIVE_ASSETS = (
 LIVE_MARKERS = (
     "قیمت", "نرخ", "امروز", "الان", "لحظه", "لحظه ای", "لحظه‌ای", "جدیدترین",
     "آخرین", "چند", "چنده", "چقدره", "جستجو", "جست و جو", "جست‌وجو", "سرچ",
-    "در وب", "وب", "آنلاین", "اینترنت",
+    "در وب", "وب", "آنلاین", "اینترنت", "خبر",
+)
+LIVE_WEATHER = (
+    "آب و هوا", "آب‌وهوا", "هواشناسی", "وضعیت هوا", "دمای هوا", "هوای امروز", "آب و هوای",
+)
+LIVE_NEWS = (
+    "خبرها", "اخبار", "آخرین خبر", "خبر فوری",
 )
 CAPABILITY_MARKERS = (
     "به اینترنت دسترسی داری", "اینترنت داری", "به وب دسترسی داری", "وب داری",
@@ -53,7 +59,9 @@ def _needs_live_web_search(text):
         return False
     explicit = any(marker in value for marker in ("جستجو", "جست و جو", "جست‌وجو", "سرچ", "در وب", "آنلاین", "اینترنت"))
     market = any(asset in value for asset in LIVE_ASSETS) and any(marker in value for marker in LIVE_MARKERS)
-    return explicit or market
+    weather = any(topic in value for topic in LIVE_WEATHER) or bool(re.search(r"هوای\s+\S+", value))
+    news = any(topic in value for topic in LIVE_NEWS)
+    return explicit or market or weather or news
 
 
 aqua_ai._needs_live_web_search = _needs_live_web_search
@@ -71,6 +79,8 @@ def _context_summary(context):
     return {
         "customers": int(data.get("customers") or 0),
         "products": int(data.get("products") or 0),
+        "services": int(data.get("services") or 0),
+        "today_services": int(data.get("today_services") or 0),
         "today_sales": int(data.get("today_sales") or 0),
         "today_received": int(data.get("today_received") or 0),
     }

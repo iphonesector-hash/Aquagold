@@ -31,7 +31,7 @@ def test_legacy_auto_speak_is_migrated_but_future_off_choice_is_respected():
 
 def test_canonical_voice_controller_is_the_only_injected_runtime():
     controller = source("aqua_voice_injector.py")
-    assert 'src="/aqua-voice-ui.js?v=20260831-stable2"' in controller
+    assert 'src="/aqua-voice-ui.js?v=20260903-aria2"' in controller
     assert "aqua-voice-runtime-hotfix|aqua-ios-tts-patch|aqua-voice-ui" in controller
     voice_js = controller.split('VOICE_UI_JS = r"""', 1)[1].split('"""', 1)[0]
     assert "aqua-voice-ui-clean" not in voice_js
@@ -92,3 +92,26 @@ def test_device_speech_does_not_spend_elevenlabs_quota():
 def test_current_aqua_asset_is_cache_busted():
     index = source("index.html")
     assert "/aqua-ai.js?v=20260827-v76" in index
+
+
+def test_aria_chat_does_not_clear_session_on_401():
+    controller = source("aqua_voice_injector.py")
+    js = controller.split('VOICE_UI_JS = r"""', 1)[1].split('"""', 1)[0]
+    assert "startsWith('/aqua-ai/')" in js
+    assert "نشست برنامه را قطع نکردم" in js
+    assert "/api/session" in js
+    assert "this.token=true" in js
+
+
+def test_mic_shows_recording_during_permission_prompt():
+    controller = source("aqua_voice_injector.py")
+    assert "['starting','recording']" in controller
+    assert "در حال درخواست میکروفن" in controller
+    assert "classList.toggle('recording'" in controller
+
+
+def test_workspace_context_exposes_service_visits_not_just_products():
+    aqua = source("aqua_ai.py")
+    assert "today_services" in aqua
+    assert "select count(*)::int services from service_visits" in aqua
+    assert "تعداد سرویس را از services/today_services بگو" in aqua
