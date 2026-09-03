@@ -67,12 +67,17 @@
     const monthly=document.getElementById('monthlyChart');
     const grid=monthly?.closest('.grid');
     if(!grid)return;
-    if(!document.getElementById('aqua-payment-summary')){
-      const summary=document.createElement('div');
+    const otherCard='<div class="card stat"><small class="muted">سایر</small><b class="block mt-1" data-aqua-payment-total="other">۰ تومان</b></div>';
+    let summary=document.getElementById('aqua-payment-summary');
+    if(!summary){
+      summary=document.createElement('div');
       summary.id='aqua-payment-summary';
-      summary.className='grid grid-cols-1 sm:grid-cols-3 gap-3';
-      summary.innerHTML='<div class="card stat"><small class="muted">دریافتی نقد</small><b class="block mt-1" data-aqua-payment-total="cash">۰ تومان</b></div><div class="card stat"><small class="muted">کارت به کارت</small><b class="block mt-1" data-aqua-payment-total="transfer">۰ تومان</b></div><div class="card stat"><small class="muted">کارتخوان</small><b class="block mt-1" data-aqua-payment-total="card">۰ تومان</b></div>';
+      summary.className='grid grid-cols-2 lg:grid-cols-4 gap-3';
+      summary.innerHTML='<div class="card stat"><small class="muted">دریافتی نقد</small><b class="block mt-1" data-aqua-payment-total="cash">۰ تومان</b></div><div class="card stat"><small class="muted">کارت به کارت</small><b class="block mt-1" data-aqua-payment-total="transfer">۰ تومان</b></div><div class="card stat"><small class="muted">کارتخوان</small><b class="block mt-1" data-aqua-payment-total="card">۰ تومان</b></div>'+otherCard;
       grid.parentElement?.insertBefore(summary,grid);
+    }else{
+      summary.className='grid grid-cols-2 lg:grid-cols-4 gap-3';
+      if(!summary.querySelector('[data-aqua-payment-total="other"]'))summary.insertAdjacentHTML('beforeend',otherCard);
     }
     if(!document.getElementById('paymentMethodChart')){
       const card=document.createElement('div');
