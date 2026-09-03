@@ -7,8 +7,8 @@ info:
     AquaGold business data but cannot create, edit, cancel, delete or otherwise
     mutate records.
 servers:
-  - url: https://aquagold-actions.example.com
-    description: Replace this URL with the verified AquaGold preview/actions host before enabling the Action.
+  - url: https://aquagold-db-git-fix-aqua-scoped-stability-20260901-i-sector.vercel.app
+    description: Stable Vercel alias for the isolated AquaGold test branch.
 security:
   - bearerAuth: []
 paths:
