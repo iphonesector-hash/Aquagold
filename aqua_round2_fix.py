@@ -53,13 +53,22 @@ def _capability_question(text):
     return any(marker in value for marker in CAPABILITY_MARKERS)
 
 
+def _is_weather_query(text):
+    value = _norm(text)
+    if any(topic in value for topic in LIVE_WEATHER) or "اب و هوا" in value:
+        return True
+    if re.search(r"هوای\s+\S+", value):
+        return True
+    return "هوا" in value and any(city in value for city in ("تهران", "امروز", "الان"))
+
+
 def _needs_live_web_search(text):
     value = _norm(text)
     if _capability_question(value):
         return False
     explicit = any(marker in value for marker in ("جستجو", "جست و جو", "جست‌وجو", "سرچ", "در وب", "آنلاین", "اینترنت"))
     market = any(asset in value for asset in LIVE_ASSETS) and any(marker in value for marker in LIVE_MARKERS)
-    weather = any(topic in value for topic in LIVE_WEATHER) or bool(re.search(r"هوای\s+\S+", value))
+    weather = _is_weather_query(value)
     news = any(topic in value for topic in LIVE_NEWS)
     return explicit or market or weather or news
 
@@ -140,7 +149,7 @@ def _fast_groq_answer(settings, text, history, context):
                 return "کلید Groq تنظیم نشده، پس جست‌وجوی وب فعلاً فعال نیست."
             return "آره. من داخل AquaGold برای اطلاعات لحظه‌ای به Web Search واقعی وصل می‌شم؛ مثلاً قیمت دلار، طلا، خبر یا اطلاعات روز رو از وب جست‌وجو می‌کنم."
 
-        live = _needs_live_web_search(text)
+        live = _needs_live_web_search(text) or _is_weather_query(text)
         messages = _messages(text, history, context, live=live)
         if live:
             # Keep the established, tested route: full Compound first for the most
@@ -173,8 +182,8 @@ def _fast_groq_answer(settings, text, history, context):
                 if not live and index == 0 and not _is_model_error(exc) and len(attempts) == 1:
                     break
 
-        if live:
-            raise RuntimeError("جست‌وجوی زنده آریا پاسخ نداد؛ چند لحظه بعد دوباره امتحان کن.") from last_error
+        if live or _is_weather_query(text):
+            raise RuntimeError("الان نتونستم اطلاعات زنده را از وب بگیرم؛ چند لحظه بعد دوباره بپرس. هیچ حدسی نزدم.") from last_error
         raise RuntimeError("سرویس آریا پاسخ نداد؛ چند لحظه بعد دوباره امتحان کن.") from last_error
     finally:
         app_v3.logger.info("aqua_round2_answer_ms=%d", int((time.monotonic() - started) * 1000))

@@ -33,6 +33,15 @@ _PREVIOUS_GROQ_ANSWER = aqua_ai._groq_answer
 _FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 
 
+def _is_weather_query(text):
+    value = re.sub(r"\s+", " ", str(text or "").replace("\u200c", " ").replace("ي", "ی").replace("ك", "ک")).strip()
+    marks = (
+        "آب و هوا", "آب‌وهوا", "اب و هوا", "هواشناسی", "وضعیت هوا",
+        "دمای هوا", "آب و هوای", "هوای امروز",
+    )
+    return any(mark in value for mark in marks) or bool(re.search(r"هوای\s+\S+", value))
+
+
 def _live_search_answer(settings, text):
     key = str((settings or {}).get("groq_api_key") or "").strip()
     if not key:
@@ -47,13 +56,22 @@ def _live_search_answer(settings, text):
         "Groq-Model-Version": "2025-07-23",
     }
     user_text = re.sub(r"\s+", " ", str(text or "")).strip()[:320]
-    compact_prompt = (
-        "با web_search اطلاعات لحظه‌ای این درخواست را پیدا کن و کوتاه به فارسی جواب بده. "
-        "برای قیمت بازار ایران نوع دارایی، واحد تومان و زمان تقریبی را روشن بنویس؛ حدس نزن. درخواست: "
-        + user_text
-    )
+    weather = _is_weather_query(text)
+    if weather:
+        compact_prompt = (
+            "با web_search آب‌وهوای فعلی را پیدا کن و کوتاه به فارسی جواب بده. "
+            "شهر، دما، وضعیت آسمان و زمان گزارش را روشن بنویس؛ حدس نزن. درخواست: "
+            + user_text
+        )
+        attempts = (("groq/compound-mini", 18), ("groq/compound", 20))
+    else:
+        compact_prompt = (
+            "با web_search اطلاعات لحظه‌ای این درخواست را پیدا کن و کوتاه به فارسی جواب بده. "
+            "برای قیمت بازار ایران نوع دارایی، واحد تومان و زمان تقریبی را روشن بنویس؛ حدس نزن. درخواست: "
+            + user_text
+        )
+        attempts = (("groq/compound-mini", 9), ("groq/compound", 10))
     messages = [{"role": "user", "content": compact_prompt}]
-    attempts = (("groq/compound-mini", 9), ("groq/compound", 10))
     last_error = None
     for model, timeout in attempts:
         try:
@@ -79,11 +97,16 @@ def _live_search_answer(settings, text):
 
 
 def _targeted_groq_answer(settings, text, history, context):
-    if not aqua_ai._needs_live_web_search(text):
+    live = aqua_ai._needs_live_web_search(text) or _is_weather_query(text)
+    if not live:
         return _PREVIOUS_GROQ_ANSWER(settings, text, history, context)
     started = time.monotonic()
     try:
         return _live_search_answer(settings, text)
+    except RuntimeError:
+        if _is_weather_query(text):
+            return "الان نتونستم آب‌وهوای زنده را از وب بگیرم؛ چند لحظه بعد دوباره بپرس. هیچ حدسی نزدم."
+        raise
     finally:
         app_v3.logger.info(
             "aqua_targeted_live_answer_ms=%d",

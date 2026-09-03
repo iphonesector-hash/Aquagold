@@ -244,10 +244,18 @@ def _workspace_context(cur):
 
 
 def _needs_live_web_search(text):
-    value = str(text or "").strip().lower()
+    value = re.sub(r"\s+", " ", str(text or "").replace("\u200c", " ").strip().lower())
     explicit_web = any(marker in value for marker in ("در وب", "جستجو", "جست‌وجو", "جدیدترین", "آخرین خبر"))
     live_market = any(asset in value for asset in LIVE_SEARCH_ASSETS) and any(marker in value for marker in LIVE_SEARCH_MARKERS)
-    return explicit_web or live_market
+    weather = any(
+        marker in value
+        for marker in (
+            "آب و هوا", "آب‌وهوا", "اب و هوا", "هواشناسی", "وضعیت هوا",
+            "دمای هوا", "آب و هوای", "هوای امروز",
+        )
+    ) or bool(re.search(r"هوای\s+\S+", value))
+    news = any(marker in value for marker in ("خبرها", "اخبار", "خبر فوری"))
+    return explicit_web or live_market or weather or news
 
 
 def _compound_payload(model, messages, *, live_search=False):

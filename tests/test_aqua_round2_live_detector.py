@@ -17,3 +17,13 @@ def test_tehran_weather_is_live_search():
     assert needs("هوای تهران")
     assert needs("قیمت دلار امروز")
     assert not needs("سلام آریا")
+
+
+def test_weather_does_not_use_generic_aria_down_error():
+    src = (ROOT / "aqua_round2_fix.py").read_text(encoding="utf-8")
+    targeted = (ROOT / "aqua_targeted_fix.py").read_text(encoding="utf-8")
+    assert "_is_weather_query" in src
+    assert "هیچ حدسی نزدم" in src
+    assert "آب و هوای تهران"  # keep file utf-8
+    assert "or _is_weather_query(text)" in targeted
+    assert "الان نتونستم آب‌وهوای زنده را از وب بگیرم" in targeted
