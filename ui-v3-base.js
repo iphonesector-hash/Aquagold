@@ -97,7 +97,7 @@ function app(){return{
     if(!safe&&queueable&&!opts.offlineReplay&&!navigator.onLine)return this.queueOffline(path,method,opts.body,headers);
     try{
       let r=await fetch('/api'+path,fetchOpts),d={};try{d=await r.json()}catch{}
-      if(r.status===401&&!['/login','/session','/logout'].includes(path)){this.token=false;this.user=null;let e=Error('نشست منقضی شد');e.status=401;throw e}
+      if(r.status===401&&!['/login','/session','/logout'].includes(path)){let sessionOk=false;try{const sr=await fetch('/api/session',{credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json'}});if(sr.ok){const sd=await sr.json();sessionOk=!!sd?.user}}catch{}if(!sessionOk){this.token=false;this.user=null;let e=Error('نشست منقضی شد');e.status=401;throw e}let e=new Error(d.error||'دسترسی این بخش ممکن نشد');e.status=403;e.data=d;throw e}
       if(!r.ok){if(safe&&window.AquaOffline&&[502,503,504].includes(r.status)){let cached=await AquaOffline.cacheGet('/api'+path);if(cached!==undefined)return cached}if(!safe&&queueable&&!opts.offlineReplay&&[502,503,504].includes(r.status))return this.queueOffline(path,method,opts.body,headers);let e=new Error(d.error||'خطا در ارتباط با سرور');e.status=r.status;e.data=d;throw e}
       if(safe&&window.AquaOffline)await AquaOffline.cachePut('/api'+path,d);
       return d
