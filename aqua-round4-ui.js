@@ -114,7 +114,7 @@
       mountFinancePaymentUi();
       try{await this.loadAquaPaymentBreakdown?.()}catch{}
       const totals=this.paymentMethodTotals?.()||{cash:0,transfer:0,card:0,other:0};
-      for(const key of ['cash','transfer','card']){
+      for(const key of ['cash','transfer','card','other']){
         const el=document.querySelector(`[data-aqua-payment-total="${key}"]`);
         if(el)el.textContent=this.money(Number(totals[key]||0))+' تومان';
       }
@@ -170,14 +170,14 @@
 
       const paymentCanvas=document.getElementById('paymentMethodChart');
       if(paymentCanvas){
-        destroy('financeDonutChart');
-        this.financeDonutChart=new Chart(paymentCanvas,{
+        destroy('paymentMethodChart');
+        this.paymentMethodChart=new Chart(paymentCanvas,{
           type:'doughnut',
           data:{
-            labels:['نقد','کارت به کارت','کارتخوان'],
+            labels:['نقد','کارت به کارت','کارتخوان','سایر'],
             datasets:[{
-              data:[Number(totals.cash||0),Number(totals.transfer||0),Number(totals.card||0)],
-              backgroundColor:['#22c55e','#3b82f6','#8b5cf6'],
+              data:[Number(totals.cash||0),Number(totals.transfer||0),Number(totals.card||0),Number(totals.other||0)],
+              backgroundColor:['#22c55e','#3b82f6','#8b5cf6','#f59e0b'],
               borderWidth:0
             }]
           },

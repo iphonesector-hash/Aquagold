@@ -152,20 +152,40 @@
       const local=localPaymentTotals.call(this);
       if(!totals||(['cash','transfer','card'].every(key=>Number(totals?.[key]||0)===0)&&['cash','transfer','card'].some(key=>Number(local[key]||0)>0)))totals=local;
       totals={cash:Number(totals?.cash||0),transfer:Number(totals?.transfer||0),card:Number(totals?.card||0),other:Number(totals?.other||0)};
-      for(const key of ['cash','transfer','card']){
+      for(const key of ['cash','transfer','card','other']){
         const el=document.querySelector(`[data-aqua-payment-total="${key}"]`);if(el)el.textContent=this.money(totals[key])+' تومان';
       }
       const canvas=document.getElementById('paymentMethodChart');if(!canvas||!window.Chart)return totals;
       try{window.Chart.getChart?.(canvas)?.destroy?.()}catch{}
       try{this.paymentMethodChart?.destroy?.()}catch{}
-      this.paymentMethodChart=new Chart(canvas,{type:'doughnut',data:{labels:['نقد','کارت به کارت','کارتخوان'],datasets:[{data:[totals.cash,totals.transfer,totals.card],backgroundColor:['#22c55e','#3b82f6','#8b5cf6'],borderWidth:0,hoverOffset:7}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',animation:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:12}}}}});
+      this.paymentMethodChart=new Chart(canvas,{type:'doughnut',data:{labels:['نقد','کارت به کارت','کارتخوان','سایر'],datasets:[{data:[totals.cash,totals.transfer,totals.card,totals.other],backgroundColor:['#22c55e','#3b82f6','#8b5cf6','#f59e0b'],borderWidth:0,hoverOffset:7}]},options:{responsive:true,maintainAspectRatio:false,cutout:'62%',animation:false,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,boxWidth:12}}}}});
       return totals;
     };
 
+    state.renderAquaShareCharts=function(){
+      if(!window.Chart)return;
+      const colors={cyan:'#22d3ee',violet:'#8b5cf6',amber:'#f59e0b',teal:'#2dd4bf',rose:'#f43f5e',blue:'#38bdf8'};
+      const legend={position:'bottom',labels:{usePointStyle:true,boxWidth:12}};
+      const totals=this.analytics?.totals||{};
+      const donut=document.getElementById('financeDonutChart');
+      if(donut){
+        try{window.Chart.getChart?.(donut)?.destroy?.()}catch{}
+        try{this.financeDonutChart?.destroy?.()}catch{}
+        this.financeDonutChart=new Chart(donut,{type:'doughnut',data:{labels:['سهم شرکت','هزینه‌ها','سود خالص'],datasets:[{data:[Math.max(Number(totals.company_share||0),0),Math.max(Number(totals.expenses||0),0),Math.max(Number(totals.net_profit||0),0)],backgroundColor:[colors.cyan,colors.amber,colors.violet],borderWidth:0,hoverOffset:8}]},options:{responsive:true,maintainAspectRatio:false,cutout:'66%',animation:false,plugins:{legend}}});
+      }
+      const types=this.analytics?.service_types||[];
+      const polar=document.getElementById('financePolarChart');
+      if(polar){
+        try{window.Chart.getChart?.(polar)?.destroy?.()}catch{}
+        try{this.financePolarChart?.destroy?.()}catch{}
+        this.financePolarChart=new Chart(polar,{type:'polarArea',data:{labels:types.slice(0,6).map(x=>x.service_type||'نامشخص'),datasets:[{data:types.slice(0,6).map(x=>Number(x.received||0)),backgroundColor:['#2dd4bfaa','#22d3eeaa','#8b5cf6aa','#f59e0baa','#f43f5eaa','#38bdf8aa'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend}}});
+      }
+    };
     state.renderRound4Finance=async function(){
       if(this.aquaFinanceRenderPromise)return this.aquaFinanceRenderPromise;
       const operation=(async()=>{
         try{await baseFinance?.()}catch(error){console.warn('Aqua finance base render recovered',error)}
+        try{this.renderAquaShareCharts?.()}catch(error){console.warn('Aqua share charts recovered',error)}
         try{return await this.renderAquaPaymentOnly()}catch(error){console.warn('Aqua payment render failed',error);return null}
       })();
       this.aquaFinanceRenderPromise=operation;
@@ -179,6 +199,9 @@
       return result;
     };
 
+    if(window.webkitSpeechRecognition||window.SpeechRecognition){
+      return state;
+    }
     state.toggleAquaRecording=async function(){
       const phase=this.aquaVoicePhase||'idle';
       if(phase==='recording'){
@@ -211,7 +234,9 @@
             if(!response.ok)throw Error(data.error||'تبدیل ویس به متن انجام نشد');
             const spoken=clean(data.text);if(!spoken)throw Error('حرفی از ویس تشخیص داده نشد');if(runId!==this.aquaVoiceSeq)return;
             this.aquaInput=spoken;this.setAquaVoicePhase?.('submitting');this.toast?.('گرفتمش؛ دارم برای آریا می‌فرستم…','success');
-            const sent=await this.submitAquaVoiceTranscript?.(spoken,runId);this.aquaInput=sent?'':spoken;if(!sent)this.toast?.('متن ویس در کادر ماند؛ دکمه ارسال را بزن','info');
+            let sent=false;try{sent=!!await this.submitAquaVoiceTranscript?.(spoken,runId)}catch{}
+            if(!sent){try{await this.sendAqua?.(spoken);sent=true}catch{}}
+            this.aquaInput=sent?'':spoken;if(!sent)this.toast?.('متن ویس در کادر ماند؛ دکمه ارسال را بزن','info');
           }catch(error){this.toast?.(error?.message||'ویس پردازش نشد','error')}
           finally{this.setAquaVoicePhase?.('idle');this.aquaRecorder=null;this.aquaStream=null}
         };

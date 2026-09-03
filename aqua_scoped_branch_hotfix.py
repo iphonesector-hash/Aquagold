@@ -33,7 +33,8 @@ SCOPED_UI_JS = r"""
    new Intl.DateTimeFormat('fa-IR',options).formatToParts(date).forEach(part=>{if(part.type!=='literal')map[part.type]=part.value});
    const dateText=[map.weekday,faDigits(map.day),map.month,faDigits(map.year)].filter(Boolean).join(' ');
    if(!withTime)return dateText;
-   return `${dateText} ساعت ${faDigits(map.hour).padStart(2,'۰')}:${faDigits(map.minute).padStart(2,'۰')}:${faDigits(map.second).padStart(2,'۰')}`;
+   const timeText=`${faDigits(map.hour).padStart(2,'۰')}:${faDigits(map.minute).padStart(2,'۰')}:${faDigits(map.second).padStart(2,'۰')}`;
+   return `${dateText} ساعت \u2066${timeText}\u2069`;
   }catch{return String(value)}
  };
  const style=document.createElement('style');style.id='aqua-scoped-dashboard-style';style.textContent=`

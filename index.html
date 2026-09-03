@@ -18,7 +18,7 @@
 <script src="/offline-store.js?v=20260827-v69"></script>
 <script src="/ui-v3-base.js?v=20260901-stable1"></script>
 <script src="/ui-v4-enhancements.js?v=20260901-stable1"></script>
-<script src="/ui-commerce.js?v=20260827-v69"></script>
+<script src="/ui-commerce.js?v=20260903-fe1"></script>
 <script src="/ui-visual-polish.js?v=20260827-v69"></script>
 <script>
 const baseApp=window.app;
@@ -35,7 +35,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem('aquagold-theme'
 <script src="/aqua-premium.js?v=20260827-v69"></script>
 <script src="/aqua-ai.js?v=20260827-v76"></script>
 <script src="/bale-ui.js?v=20260827-v71"></script>
-<script src="/ui-v4-finalize.js?v=20260827-v72"></script>
+<script src="/ui-v4-finalize.js?v=20260903-fe1"></script>
 <script defer src="/vendor/alpinejs-3.14.9.min.js"></script>
 <style>
 :root{--bg:#f3f7f8;--surface:rgba(255,255,255,.82);--surface-2:#fff;--text:#0b1f27;--muted:#6a7d84;--line:rgba(9,55,61,.09);--brand:#087b79;--brand2:#0ea5a8;--deep:#063c42;--cyan:#30c5d2;--good:#0a9b68;--warn:#c77a05;--danger:#dc4a55;--shadow:0 18px 55px rgba(7,44,51,.09)}
@@ -55,7 +55,7 @@ html[data-theme=dark]{--bg:#071418;--surface:rgba(14,31,36,.86);--surface-2:#102
 .smart-result{background:linear-gradient(145deg,rgba(124,58,237,.06),rgba(14,165,168,.07));border:1px solid rgba(124,58,237,.12)}.gps-ready{background:rgba(10,155,104,.1);border:1px solid rgba(10,155,104,.22);color:var(--good)}
 .empty{padding:52px 20px;text-align:center;color:var(--muted)}.empty-icon{width:62px;height:62px;border-radius:22px;background:rgba(8,123,121,.08);display:grid;place-items:center;margin:0 auto 12px;font-size:1.7rem}.skeleton{position:relative;overflow:hidden;background:rgba(120,140,145,.13);border-radius:12px}.skeleton:after{content:"";position:absolute;inset:0;transform:translateX(100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent);animation:shimmer 1.4s infinite}@keyframes shimmer{100%{transform:translateX(-100%)}}
 .fab{position:fixed;left:22px;bottom:26px;z-index:70;width:58px;height:58px;border-radius:20px;background:linear-gradient(135deg,#087b79,#12b7b2);color:white;display:grid;place-items:center;font-size:1.55rem;box-shadow:0 16px 42px rgba(8,123,121,.34);border:1px solid rgba(255,255,255,.28)}
-#toast-stack{position:fixed;right:20px;bottom:24px;z-index:100;display:grid;gap:10px;max-width:min(360px,calc(100vw - 40px))}.toast{background:var(--surface-2);color:var(--text);border:1px solid var(--line);box-shadow:var(--shadow);padding:13px 15px;border-radius:17px;animation:toastIn .22s ease}.toast b{color:var(--brand)}@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#toast-stack{position:fixed;right:20px;bottom:calc(24px + env(safe-area-inset-bottom,0px) + 72px);z-index:100;display:grid;gap:10px;max-width:min(360px,calc(100vw - 40px))}.toast{background:var(--surface-2);color:var(--text);border:1px solid var(--line);box-shadow:var(--shadow);padding:13px 15px;border-radius:17px;animation:toastIn .22s ease}.toast b{color:var(--brand)}@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .leaflet-container{font-family:Vazirmatn!important;background:var(--surface-2)!important}.leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--surface-2)!important;color:var(--text)!important}.leaflet-popup-content-wrapper{border-radius:16px!important;box-shadow:var(--shadow)!important}
 .aq-map-marker{background:transparent!important;border:0!important}.aq-map-marker span{display:block;width:24px;height:24px;border-radius:50% 50% 50% 0;background:#2563eb;border:3px solid #fff;box-shadow:0 4px 12px #0005;transform:rotate(-45deg)}
 .login-bg{background:radial-gradient(circle at 80% 10%,rgba(48,197,210,.35),transparent 28rem),radial-gradient(circle at 15% 85%,rgba(14,165,168,.2),transparent 30rem),linear-gradient(145deg,#041f24,#063c42 50%,#087b79);position:relative;overflow:hidden}.login-bg:after{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.12) 1px,transparent 1px);background-size:22px 22px;mask-image:linear-gradient(to bottom,black,transparent)}
@@ -83,7 +83,7 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
       <input x-model="loginForm.username" class="field" autocomplete="username" placeholder="نام کاربری">
       <input x-model="loginForm.password" type="password" autocomplete="current-password" class="field" placeholder="رمز عبور">
       <p x-show="error" x-text="error" class="text-red-500 text-sm"></p>
-      <button class="btn primary w-full text-base" x-text="busy?'در حال ورود…':'ورود به AquaGold'"></button>
+      <button class="btn primary w-full text-base" :disabled="busy" x-text="busy?'در حال ورود…':'ورود به AquaGold'"></button>
     </form>
     <div class="text-center text-xs muted mt-5">نسخه v7.1</div>
   </section>
