@@ -1,0 +1,237 @@
+openapi: 3.1.0
+info:
+  title: AquaGold Aqua Aria Read-Only Actions
+  version: 1.0.0
+  description: >
+    Read-only access for the Aqua Aria custom GPT. These operations can search
+    AquaGold business data but cannot create, edit, cancel, delete or otherwise
+    mutate records.
+servers:
+  - url: https://aquagold-actions.example.com
+    description: Replace this URL with the verified AquaGold preview/actions host before enabling the Action.
+security:
+  - bearerAuth: []
+paths:
+  /api/gpt/health:
+    get:
+      operationId: getAquaHealth
+      summary: Check AquaGold Actions health
+      description: Use to check whether the read-only AquaGold Actions API and database are reachable.
+      responses:
+        "200":
+          description: Healthy
+        "401":
+          description: Invalid or missing Action API key
+        "503":
+          description: Actions key or database is unavailable
+
+  /api/gpt/customers/search:
+    get:
+      operationId: searchCustomers
+      summary: Search AquaGold customers
+      description: Search by customer name, family name, address, map label or phone. Use this before asking for a customer ID.
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Customer name, family name, phone, address fragment or map label.
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 160
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+            default: 10
+      responses:
+        "200":
+          description: Matching customers
+        "400":
+          description: Invalid search query
+        "401":
+          description: Unauthorized
+
+  /api/gpt/customers/{customer_id}:
+    get:
+      operationId: getCustomer
+      summary: Get one AquaGold customer
+      description: Return customer details, phone numbers, balances and latest service.
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Customer details
+        "401":
+          description: Unauthorized
+        "404":
+          description: Customer not found
+
+  /api/gpt/customers/{customer_id}/history:
+    get:
+      operationId: getCustomerHistory
+      summary: Get customer service history
+      description: Return recent persisted service visits and line items for a specific customer.
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Customer service history
+        "401":
+          description: Unauthorized
+        "404":
+          description: Customer not found
+
+  /api/gpt/daily-jobs:
+    get:
+      operationId: getDailyJobs
+      summary: Get AquaGold jobs for one Tehran-local day
+      description: Return service visits and Bale jobs associated with a Tehran-local date.
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: Gregorian ISO date. Omit for today in Asia/Tehran.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daily service visits and Bale jobs
+        "400":
+          description: Invalid date
+        "401":
+          description: Unauthorized
+
+  /api/gpt/daily-report:
+    get:
+      operationId: getDailyReport
+      summary: Get concise daily operational report
+      description: Return completed jobs, cancellations and financial totals for one Tehran-local day.
+      parameters:
+        - name: date
+          in: query
+          required: false
+          description: Gregorian ISO date. Omit for today in Asia/Tehran.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Daily operational report
+        "400":
+          description: Invalid date
+        "401":
+          description: Unauthorized
+
+  /api/gpt/finance/summary:
+    get:
+      operationId: getFinanceSummary
+      summary: Get AquaGold finance summary
+      description: Return persisted invoice, received, company share, user share, expense, profit, settlement and payment-method totals.
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Gregorian ISO start date. Defaults to today in Asia/Tehran.
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          required: false
+          description: Gregorian ISO end date, inclusive. Defaults to the start date.
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Finance summary
+        "400":
+          description: Invalid date range
+        "401":
+          description: Unauthorized
+
+  /api/gpt/invoices:
+    get:
+      operationId: getInvoices
+      summary: Search or list recent invoices
+      description: Return recent invoices, optionally filtered by invoice number, customer name or phone.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 160
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Invoice list
+        "400":
+          description: Invalid query
+        "401":
+          description: Unauthorized
+
+  /api/gpt/products:
+    get:
+      operationId: getProducts
+      summary: Search or list active products
+      description: Return active products and current persisted prices from AquaGold.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 160
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        "200":
+          description: Product list
+        "400":
+          description: Invalid query
+        "401":
+          description: Unauthorized
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API-Key
