@@ -82,7 +82,7 @@ def _fast_live_answer(settings, text):
     # questions and has substantially lower latency/usage than full Compound.
     for attempt in range(2):
         try:
-            return _run_live(settings, "groq/compound-mini", messages, 14)
+            return _run_live(settings, "groq/compound-mini", messages, 10)
         except (RuntimeError, KeyError, IndexError, TypeError) as exc:
             last_error = exc
             app_v3.logger.warning(
