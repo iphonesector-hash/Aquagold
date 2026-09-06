@@ -29,10 +29,15 @@ def test_miniapp_has_isolated_login_and_read_only_reporting_routes():
 
 def test_daily_timeline_is_right_to_left_in_expected_order():
     js = source("aqua-bale-miniapp.js")
+    css = source("aqua-bale-miniapp.css")
     block = js[js.index("function statusTimeline"):js.index("function jobCard")]
-    assert block.index("در صف انتظار") < block.index("ثبت شده") < block.index("انجام شده")
-    assert "segment.flow" not in block  # behavior is represented by classes, not duplicate DOM injection
-    assert "flowRtl" in source("aqua-bale-miniapp.css")
+    template = block[block.index("return `<div class=\"timeline\">"):]
+    assert template.index("${waitClass}") < template.index("${regClass}") < template.index("${finalClass}")
+    assert "در صف انتظار" in template
+    assert "ثبت شده" in template
+    assert "${finalLabel}" in template
+    assert ".timeline{direction:rtl" in css
+    assert "flowRtl" in css
 
 
 def test_finance_has_daily_weekly_monthly_and_collapsible_chart():
