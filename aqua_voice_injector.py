@@ -24,7 +24,7 @@ VOICE_UI_JS = r"""
   .replace(/[`*_~#>|]+/g,' ').replace(/^\s*[-•]+\s*/gm,' ').replace(/\s+/g,' ').trim();
  const splitSpeech=value=>{const clean=cleanSpeechText(value);if(!clean)return[];const result=[];let current='';for(const sentence of clean.split(/(?<=[.!؟?!؛;،,])\s+/)){const next=(current+' '+sentence).trim();if(next.length<=320){current=next;continue}if(current)result.push(current);if(sentence.length<=320)current=sentence;else{for(let index=0;index<sentence.length;index+=300)result.push(sentence.slice(index,index+300));current=''}}if(current)result.push(current);return result};
  const choosePersianVoice=list=>{const voices=Array.isArray(list)?list:[],normalize=value=>String(value||'').toLowerCase(),score=voice=>{const name=normalize(voice?.name),uri=normalize(voice?.voiceURI),label=name+' '+uri;let value=/^fa(?:-|_)/i.test(String(voice?.lang||''))?20:0;if(label.includes('dariush')||label.includes('darius')||label.includes('داریوش'))value+=100;if(label.includes('premium'))value+=35;if(label.includes('enhanced'))value+=30;if(label.includes('compact'))value-=25;return value};return [...voices].filter(voice=>score(voice)>0).sort((a,b)=>score(b)-score(a))[0]||null};
- const style=document.createElement('style');style.id='aqua-voice-controller-style';style.textContent='.aqua-mic:disabled,.aqua-send:disabled{opacity:.55;cursor:wait;filter:saturate(.6)}.aqua-mic[data-phase="transcribing"],.aqua-mic[data-phase="submitting"]{animation:aquaVoiceWait 1s ease-in-out infinite}@keyframes aquaVoiceWait{50%{transform:scale(.94);opacity:.65}}';document.head.appendChild(style);
+ const style=document.createElement('style');style.id='aqua-voice-controller-style';style.textContent='.aqua-mic:disabled,.aqua-send:disabled{opacity:.55;cursor:wait;filter:saturate(.6)}.aqua-mic[data-phase="starting"],.aqua-mic[data-phase="recording"],.aqua-mic.recording{background:#e43e54;animation:aquaPulse 1s infinite}.aqua-mic[data-phase="transcribing"],.aqua-mic[data-phase="submitting"]{animation:aquaVoiceWait 1s ease-in-out infinite}.aqua-mic-banner{margin:8px 12px;padding:10px 12px;border-radius:14px;background:#111827;color:#fff;font-size:14px;font-weight:700}.aqua-mic-banner.is-recording{background:#e43e54}@keyframes aquaVoiceWait{50%{transform:scale(.94);opacity:.65}}@keyframes aquaPulse{50%{box-shadow:0 0 0 10px #ef476f22}}';document.head.appendChild(style);
 
  window.app=function(){
   const s=previous();
@@ -34,6 +34,23 @@ VOICE_UI_JS = r"""
    aquaDeviceVoices:[],aquaDeviceVoiceName:'',aquaVoiceListenerBound:false
   });
   if(s.aquaSettings)s.aquaSettings.auto_speak=true;
+  const baseApi=s.api?.bind(s);
+  if(baseApi)s.api=async function(path,opts){
+   if(!String(path||'').startsWith('/aqua-ai/'))return baseApi(path,opts);
+   const token=this.token,user=this.user;
+   try{return await baseApi(path,opts)}
+   catch(error){
+    const status=Number(error?.status);
+    if(status===401||status===403){
+     let sessionAlive=!!this.token;
+     if(!sessionAlive){
+      try{const sr=await fetch('/api/session',{credentials:'same-origin',cache:'no-store'});if(sr.ok){const sd=await sr.json();sessionAlive=!!sd?.user;if(sessionAlive){this.token=true;this.user=user||sd.user}}}catch{}
+     }
+     if(sessionAlive){const wrapped=Error((error.message&&error.message!=='نشست منقضی شد')?error.message:'درخواست آریا احراز نشد؛ نشست برنامه را قطع نکردم');wrapped.status=403;throw wrapped}
+    }
+    throw error
+   }
+  };
 
   s.refreshAquaDeviceVoices=function(){
    try{this.aquaDeviceVoices=window.speechSynthesis?.getVoices?.()||[]}catch{this.aquaDeviceVoices=[]}
@@ -50,8 +67,12 @@ VOICE_UI_JS = r"""
   };
 
   s.setAquaVoicePhase=function(phase){
-   this.aquaVoicePhase=phase;this.aquaRecording=phase==='recording';this.aquaTranscribing=phase==='transcribing';this.aquaVoiceSending=phase==='submitting';this.aquaVoiceSubmitActive=phase==='submitting';
-   const button=document.querySelector('.aqua-mic');if(button){button.dataset.phase=phase;button.disabled=['starting','stopping','transcribing','submitting'].includes(phase)}
+   this.aquaVoicePhase=phase;this.aquaRecording=['starting','recording'].includes(phase);this.aquaTranscribing=phase==='transcribing';this.aquaVoiceSending=phase==='submitting';this.aquaVoiceSubmitActive=phase==='submitting';
+   const button=document.querySelector('.aqua-mic');if(button){button.dataset.phase=phase;button.classList.toggle('recording',this.aquaRecording);button.disabled=['stopping','transcribing','submitting'].includes(phase)}
+   let banner=document.getElementById('aqua-mic-banner');
+   if(!banner){const form=document.querySelector('.aqua-composer');if(form){banner=document.createElement('div');banner.id='aqua-mic-banner';banner.setAttribute('role','status');form.insertAdjacentElement('afterend',banner)}}
+   const labels={starting:'در حال درخواست میکروفن — اجازه مرورگر را تأیید کن',recording:'در حال ضبط — برای توقف دوباره میکروفن را بزن',stopping:'دارم ضبط را تمام می‌کنم…',transcribing:'دارم صدات را به متن تبدیل می‌کنم…',submitting:'دارم همان پیام را می‌فرستم…'};
+   if(banner){const text=labels[phase]||'';banner.textContent=text;banner.hidden=!text;banner.className='aqua-mic-banner'+(this.aquaRecording?' is-recording':'')}
   };
 
   s.stopAquaSpeech=function(){
@@ -117,9 +138,10 @@ VOICE_UI_JS = r"""
    if(phase!=='idle'){this.toast?.(phase==='transcribing'?'دارم صدات رو به متن تبدیل می‌کنم…':phase==='submitting'?'دارم همون پیام رو می‌فرستم…':'ضبط قبلی هنوز کامل نشده…','info');return}
    if(this.aquaBusy||this.aquaSendLock||this.aquaSendPromise){this.toast?.('آریا هنوز در حال پاسخ‌دادنه؛ یک لحظه صبر کن','info');return}
    if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){this.toast?.('ضبط صدا روی این مرورگر پشتیبانی نمی‌شود','error');return}
-   this.stopAquaSpeech();this.primeAquaDeviceSpeech();this.setAquaVoicePhase('starting');let stream=null;
+   this.setAquaVoicePhase('starting');this.toast?.('در حال درخواست میکروفن — اجازه مرورگر را تأیید کن','info');let stream=null;
    try{
     stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+    this.stopAquaSpeech();this.primeAquaDeviceSpeech();
     const mime=pickMime(),recorder=mime?new MediaRecorder(stream,{mimeType:mime}):new MediaRecorder(stream),runId=++this.aquaVoiceSeq,parts=[];let finalized=false;
     this.aquaRecorder=recorder;this.aquaStream=stream;recorder.ondataavailable=event=>{if(event.data?.size)parts.push(event.data)};recorder.onerror=event=>this.toast?.(event?.error?.message||'خطای ضبط صدا','error');
     recorder.onstop=async()=>{
@@ -134,7 +156,7 @@ VOICE_UI_JS = r"""
      finally{if(runId===this.aquaVoiceSeq){this.aquaRecorder=null;this.aquaStream=null;this.setAquaVoicePhase('idle')}}
     };
     recorder.start(250);this.setAquaVoicePhase('recording');this.toast?.('آریا گوش می‌ده؛ وقتی تموم شد فقط یک‌بار میکروفن رو بزن','info')
-   }catch(error){try{stream?.getTracks?.().forEach(track=>track.stop())}catch{}this.aquaRecorder=null;this.aquaStream=null;this.setAquaVoicePhase('idle');this.toast?.(error?.message||'دسترسی میکروفن یا شروع ضبط انجام نشد','error')}
+   }catch(error){try{stream?.getTracks?.().forEach(track=>track.stop())}catch{}this.aquaRecorder=null;this.aquaStream=null;this.setAquaVoicePhase('idle');this.toast?.(error?.name==='NotAllowedError'?'اجازه میکروفن داده نشده؛ از تنظیمات مرورگر میکروفن را آزاد کن':(error?.message||'دسترسی میکروفن یا شروع ضبط انجام نشد'),'error')}
   };
 
   const mount=s.mountAquaAI?.bind(s);if(mount)s.mountAquaAI=function(){const result=mount();setTimeout(()=>this.setAquaVoicePhase(this.aquaVoicePhase||'idle'),100);return result};
@@ -168,7 +190,7 @@ def inject_aqua_voice_controller(response):
             )
             position = body.lower().find("</head>")
             if position >= 0:
-                tag = '<script src="/aqua-voice-ui.js?v=20260831-stable2"></script>'
+                tag = '<script src="/aqua-voice-ui.js?v=20260903-aria3"></script>'
                 body = body[:position] + tag + body[position:]
                 response.set_data(body)
                 response.headers["Content-Length"] = str(len(response.get_data()))
