@@ -54,8 +54,6 @@ def _validated_miniapp_url(value: str) -> str:
 
 
 def _markup(url: str):
-    # Bale may display web_app buttons in groups without launching them.
-    # A normal HTTPS URL button reliably opens the same app URL from group chats.
     return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": url}]]}
 
 
@@ -76,3 +74,39 @@ def send_bale_miniapp_button():
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
+
+
+@app.get("/__aqua_probe_persistent_menu_4b8f6a")
+def _probe_persistent_menu_api():
+    settings = MODULE._settings()
+    token = settings.get("bot_token") or ""
+    if not token:
+        return jsonify({"ok": False, "error": "bot_token_missing"}), 400
+    menu_snake = {"type": "web_app", "text": "💧 AquaGold", "web_app": {"url": DEFAULT_MINIAPP_URL}}
+    menu_camel = {"type": "web_app", "text": "💧 AquaGold", "webApp": {"url": DEFAULT_MINIAPP_URL}}
+    attempts = [
+        ("setChatMenuButton", {"menu_button": menu_snake}),
+        ("setChatMenuButton", {"menuButton": menu_camel}),
+        ("setMenuButton", {"menu_button": menu_snake}),
+        ("setMenuButton", {"menuButton": menu_camel}),
+        ("setBotMenuButton", {"menu_button": menu_snake}),
+        ("setchatmenubutton", {"menu_button": menu_snake}),
+    ]
+    errors = []
+    for method, payload in attempts:
+        try:
+            result = MODULE._bale_call(token, method, payload, 8)
+            if isinstance(result, dict) and result.get("ok") is False:
+                errors.append({"method": method, "status": "api_rejected"})
+                continue
+            return jsonify({"ok": True, "method": method, "webhook_changed": False})
+        except Exception as exc:
+            text = str(exc)
+            if "404" in text:
+                status = "not_supported"
+            elif "400" in text:
+                status = "bad_request"
+            else:
+                status = "failed"
+            errors.append({"method": method, "status": status})
+    return jsonify({"ok": False, "attempts": errors, "webhook_changed": False})
