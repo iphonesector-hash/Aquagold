@@ -57,6 +57,15 @@ def _markup(url: str):
     return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": url}]]}
 
 
+def _native_group_keyboard(url: str):
+    return {
+        "keyboard": [[{"text": "💧 AquaGold", "web_app": {"url": url}}]],
+        "resize_keyboard": True,
+        "one_time_keyboard": False,
+        "is_persistent": True,
+    }
+
+
 @app.post("/api/mini/bale/send-button")
 @MODULE.auth_required
 def send_bale_miniapp_button():
@@ -74,3 +83,28 @@ def send_bale_miniapp_button():
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
+
+
+@app.get("/__aqua_install_native_group_keyboard_91f0a7")
+def _install_native_group_keyboard_once():
+    settings = MODULE._settings()
+    chats = settings.get("allowed_chat_ids") or []
+    if not chats:
+        return jsonify({"ok": False, "error": "allowed_group_missing", "webhook_changed": False}), 400
+    sent = 0
+    failures = []
+    for chat_id in chats:
+        try:
+            result = MODULE._send_chat(
+                settings,
+                chat_id,
+                "💧 دسترسی سریع AquaGold به پایین گروه اضافه شد.",
+                reply_markup=_native_group_keyboard(DEFAULT_MINIAPP_URL),
+            )
+            if isinstance(result, dict) and result.get("ok", True):
+                sent += 1
+            else:
+                failures.append("api_rejected")
+        except Exception as exc:
+            failures.append(str(exc)[:160])
+    return jsonify({"ok": sent > 0, "installed": sent, "failures": failures, "webhook_changed": False})
