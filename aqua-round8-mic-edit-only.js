@@ -7,9 +7,14 @@
 
   const appState=()=>{
     try{
-      const root=document.querySelector('[x-data]');
-      const data=root&&window.Alpine?.$data?.(root);
+      const data=window.Alpine?.$data?.(document.body);
       if(data&&typeof data.openServiceEdit==='function')return data;
+    }catch{}
+    try{
+      for(const root of document.querySelectorAll('[x-data]')){
+        const data=window.Alpine?.$data?.(root);
+        if(data&&typeof data.openServiceEdit==='function')return data;
+      }
     }catch{}
     return null;
   };
@@ -33,18 +38,19 @@
   if(typeof previous==='function'){
     window.app=function(){
       const state=previous();
-      state.aquaRound8Run=Number(state.aquaRound8Run||0);
       state.aquaRound8StopRun=Number(state.aquaRound8StopRun||0);
 
       state.toggleAquaRecording=async function(){
-        if(this.aquaRecording){
+        const phase=this.aquaVoicePhase||(this.aquaRecording?'recording':'idle');
+
+        if(phase==='recording'||this.aquaRecording){
           const recorder=this.aquaRecorder;
           if(!recorder||recorder.state==='inactive'){
             this.aquaRecording=false;
             this.setAquaVoicePhase?.('idle');
             return;
           }
-          this.aquaRound8StopRun=Number(this.aquaRound8Run||0);
+          this.aquaRound8StopRun=Number(this.aquaVoiceSeq||0);
           this.setAquaVoicePhase?.('stopping');
           try{recorder.requestData?.()}catch{}
           try{recorder.stop()}catch(error){
@@ -55,9 +61,13 @@
           return;
         }
 
-        const phase=this.aquaVoicePhase||'idle';
         if(phase!=='idle'||this.aquaTranscribing||this.aquaVoiceSending||this.aquaBusy||this.aquaVoiceSubmitActive||this.aquaSendLock||this.aquaSendPromise){
-          this.toast?.('کار قبلی آریا هنوز کامل نشده…','info');
+          this.toast?.(
+            phase==='transcribing'?'دارم صدات رو به متن تبدیل می‌کنم…':
+            phase==='submitting'?'دارم همون پیام رو برای آریا می‌فرستم…':
+            'کار قبلی آریا هنوز کامل نشده…',
+            'info'
+          );
           return;
         }
         if(!window.isSecureContext){
@@ -81,8 +91,10 @@
           if(!track||track.readyState!=='live')throw new Error('میکروفن فعال نشد');
 
           const recorder=new MediaRecorder(stream);
-          const runId=Number(this.aquaRound8Run||0)+1;
-          this.aquaRound8Run=runId;
+          // Use the canonical Voice Controller sequence. submitAquaVoiceTranscript
+          // rejects any run whose id does not equal aquaVoiceSeq.
+          const runId=Number(this.aquaVoiceSeq||0)+1;
+          this.aquaVoiceSeq=runId;
           this.aquaRound8StopRun=0;
           const chunks=[];
           let started=false;
@@ -94,7 +106,7 @@
 
           recorder.onstart=()=>{
             started=true;
-            if(runId!==this.aquaRound8Run)return;
+            if(runId!==this.aquaVoiceSeq)return;
             this.aquaRecording=true;
             this.setAquaVoicePhase?.('recording');
             this.toast?.('آریا گوش می‌ده؛ برای پایان دوباره میکروفن رو بزن','success');
@@ -115,7 +127,7 @@
             this.aquaRecording=false;
             try{stream?.getTracks?.().forEach(item=>item.stop())}catch{}
 
-            if(runId!==this.aquaRound8Run)return;
+            if(runId!==this.aquaVoiceSeq)return;
             if(!intentional){
               this.aquaRecorder=null;
               this.aquaStream=null;
@@ -147,25 +159,33 @@
               if(!response.ok)throw new Error(data.error||'تبدیل ویس به متن انجام نشد');
               const spoken=clean(data.text);
               if(!spoken)throw new Error('حرفی از ویس تشخیص داده نشد');
+              if(runId!==this.aquaVoiceSeq)return;
 
               this.aquaInput=spoken;
               this.aquaTranscribing=false;
-              this.aquaVoiceSubmitActive=true;
               this.setAquaVoicePhase?.('submitting');
               this.toast?.('صدات گرفته شد؛ دارم برای آریا می‌فرستم…','success');
 
               let sent=false;
-              if(typeof this.submitAquaVoiceTranscript==='function')sent=await this.submitAquaVoiceTranscript(spoken,this.aquaVoiceSeq||runId);
-              else if(typeof this.submitAquaText==='function')sent=await this.submitAquaText(spoken,'voice');
+              // Call the canonical exactly-once submitter with the exact same run id.
+              if(typeof this.submitAquaVoiceTranscript==='function'){
+                sent=await this.submitAquaVoiceTranscript(spoken,runId);
+              }else if(typeof this.submitAquaText==='function'){
+                sent=await this.submitAquaText(spoken,'voice',runId);
+              }
               this.aquaInput=sent?'':spoken;
+              if(!sent)this.toast?.('ارسال خودکار انجام نشد؛ متن در کادر ماند','error');
             }catch(error){
               this.toast?.(error?.message||'ویس پردازش نشد','error');
             }finally{
-              this.aquaTranscribing=false;
-              this.aquaVoiceSubmitActive=false;
-              this.aquaRecorder=null;
-              this.aquaStream=null;
-              this.setAquaVoicePhase?.('idle');
+              if(runId===this.aquaVoiceSeq){
+                this.aquaTranscribing=false;
+                this.aquaVoiceSubmitActive=false;
+                this.aquaVoiceSending=false;
+                this.aquaRecorder=null;
+                this.aquaStream=null;
+                this.setAquaVoicePhase?.('idle');
+              }
             }
           };
 
@@ -180,7 +200,7 @@
           else recorder.start(250);
 
           setTimeout(()=>{
-            if(runId!==this.aquaRound8Run||started||recorder.state==='inactive')return;
+            if(runId!==this.aquaVoiceSeq||started||recorder.state==='inactive')return;
             this.aquaRecording=true;
             this.setAquaVoicePhase?.('recording');
           },500);
@@ -199,27 +219,53 @@
     };
   }
 
-  document.addEventListener('click',event=>{
-    const button=event.target?.closest?.('button');
-    if(!button||!clean(button.textContent).includes('ویرایش'))return;
-    const daily=button.closest?.('section[x-show*="page===\'daily\'"]');
-    if(!daily)return;
+  const patchDailyTemplate=()=>{
+    const section=[...document.querySelectorAll('section')].find(el=>(el.getAttribute('x-show')||'').includes("page==='daily'"));
+    if(!section)return;
+    const template=[...section.querySelectorAll('template')].find(el=>{
+      const expr=el.getAttribute('x-for')||'';
+      return expr.includes('j in d.jobs');
+    });
+    if(!template||template.dataset.aquaRound8Daily==='1')return;
+    template.dataset.aquaRound8Daily='1';
+    template.innerHTML=`<div class="p-4 border-b flex items-center justify-between gap-3" style="border-color:var(--line)" data-aqua-daily-row :data-aqua-job-id="j.id">
+      <div class="min-w-0">
+        <b x-text="j.name"></b>
+        <div class="text-xs muted mt-1" x-text="j.description||j.service_type||'سرویس'"></div>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <b x-text="money(j.received_amount)+' تومان'"></b>
+        <button type="button" class="btn soft !py-1.5 !px-3 no-print" data-aqua-daily-edit :data-aqua-job-id="j.id">ویرایش</button>
+      </div>
+    </div>`;
+  };
 
-    let row=button.parentElement;
-    while(row&&row!==daily){
+  patchDailyTemplate();
+  document.addEventListener('alpine:init',patchDailyTemplate,{once:true});
+
+  document.addEventListener('click',event=>{
+    const button=event.target?.closest?.('[data-aqua-daily-edit]');
+    if(!button)return;
+    const id=button.getAttribute('data-aqua-job-id')||button.closest('[data-aqua-daily-row]')?.getAttribute('data-aqua-job-id');
+    if(!id)return;
+    const app=appState();
+    if(!app)return;
+
+    let job=(Array.isArray(app.jobs)?app.jobs:[]).find(item=>String(item?.id)===String(id));
+    if(!job){
+      let groups=[];
       try{
-        const scope=window.Alpine?.$data?.(row);
-        if(scope?.j){
-          const app=appState();
-          if(app){
-            event.preventDefault();
-            event.stopImmediatePropagation();
-            app.openServiceEdit(scope.j);
-          }
-          return;
-        }
+        if(Array.isArray(app.dailyGroups))groups=app.dailyGroups;
+        else if(typeof app.dailyGroups==='function')groups=app.dailyGroups()||[];
       }catch{}
-      row=row.parentElement;
+      job=groups.flatMap(group=>Array.isArray(group?.jobs)?group.jobs:[]).find(item=>String(item?.id)===String(id));
     }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if(!job){
+      app.toast?.('سرویس برای ویرایش پیدا نشد','error');
+      return;
+    }
+    app.openServiceEdit(job);
   },true);
 })();
