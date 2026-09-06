@@ -76,7 +76,7 @@ UI_SCRIPT = r'''
   };
   const forceFreshLoader=()=>{
     const image=document.querySelector('#aqua-boot-20260906 img');
-    if(image&&!image.src.includes('aqua-loader-exact-2'))image.src='/assets/aquagold-loading-v20260906.jpg?aqua-loader-exact-2';
+    if(image&&!image.src.includes('aqua-loader-exact-3'))image.src='/assets/aquagold-loading-v20260906b.jpg?aqua-loader-exact-3';
   };
   updateClock();removeBottomUtilities();forceFreshLoader();
   setInterval(updateClock,30000);
