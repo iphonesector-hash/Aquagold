@@ -1,6 +1,6 @@
 (()=>{'use strict';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const state={view:'today',date:'',period:'daily',sound:localStorage.getItem('aquaMiniSound')!=='0',audio:null,audioUnlocked:false,searchTimer:null};
+const state={view:'today',date:'',period:'daily',sound:localStorage.getItem('aquaMiniSound')!=='0',audio:null,audioUnlocked:false,searchTimer:null,loginBusy:false};
 const fmtMoney=new Intl.NumberFormat('fa-IR');
 const icon=(name,cls='')=>`<svg class="ui-icon ${cls}"><use href="/assets/aqua-icons.svg#${name}"></use></svg>`;
 function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
@@ -12,7 +12,24 @@ function shiftDate(iso,n){const d=new Date(`${iso}T12:00:00Z`);d.setUTCDate(d.ge
 function pDate(iso,long=true){const d=new Date(`${iso}T12:00:00Z`);return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',weekday:long?'long':undefined,year:'numeric',month:long?'long':'numeric',day:'numeric'}).format(d)}
 function pDateTime(iso){if(!iso)return '—';return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
 function clock(iso){if(!iso)return '—';return new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
-async function api(path,opts={}){const r=await fetch(path,{credentials:'include',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});let data={};try{data=await r.json()}catch{}if(!r.ok){if(r.status===401&&path!='/api/mini/login')showLogin();throw new Error(data.error||'خطا در ارتباط با سرور')}return data}
+function errorText(value,status=0){
+  if(value instanceof Error&&value.message)return errorText(value.message,status);
+  if(typeof value==='string'&&value.trim()&&value.trim()!=='[object Object]')return value.trim();
+  if(Array.isArray(value)){const parts=value.map(x=>errorText(x,0)).filter(Boolean);if(parts.length)return parts.join('، ')}
+  if(value&&typeof value==='object'){
+    for(const key of ['error','message','detail','description','reason']){if(value[key]){const text=errorText(value[key],0);if(text)return text}}
+  }
+  const statusMessages={400:'اطلاعات ارسال‌شده معتبر نیست. موارد واردشده را بررسی کن.',401:'نام کاربری یا رمز عبور اشتباه است.',403:'اجازه دسترسی به این بخش را نداری.',404:'بخش درخواستی پیدا نشد.',409:'این درخواست با وضعیت فعلی قابل انجام نیست.',429:'تعداد تلاش‌ها زیاد شده؛ کمی صبر کن و دوباره امتحان کن.',500:'خطای داخلی سرور رخ داد. دوباره تلاش کن.',502:'سرور موقتاً پاسخ نمی‌دهد. چند لحظه دیگر دوباره امتحان کن.',503:'سرویس موقتاً در دسترس نیست. چند لحظه دیگر دوباره امتحان کن.',504:'پاسخ سرور طول کشید. دوباره تلاش کن.'};
+  return statusMessages[status]||'خطایی در ارتباط با سرور رخ داد. دوباره تلاش کن.'
+}
+async function api(path,opts={}){
+  let r;
+  try{r=await fetch(path,{credentials:'include',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts})}
+  catch{throw new Error(navigator.onLine?'ارتباط با سرور برقرار نشد. دوباره تلاش کن.':'اینترنت دستگاه قطع است. اتصال اینترنت را بررسی کن.')}
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok){if(r.status===401&&path!='/api/mini/login')showLogin();throw new Error(errorText(data?.error??data?.message??data,r.status))}
+  return data
+}
 
 async function ensureAudio(){
   if(!state.sound)return null;
@@ -45,6 +62,9 @@ async function setSound(){state.sound=!state.sound;localStorage.setItem('aquaMin
 function showLogin(){$('#root').classList.add('hidden');$('#login').classList.remove('hidden');setTimeout(()=>$('#password')?.focus(),120)}
 function showApp(){$('#login').classList.add('hidden');$('#root').classList.remove('hidden');navigate('today',false)}
 function hideSplash(){const s=$('#splash');s.classList.add('out');setTimeout(()=>s.classList.add('hidden'),520)}
+function setLoginBusy(busy){
+  state.loginBusy=busy;const btn=$('#loginForm button[type="submit"]');if(!btn)return;btn.disabled=busy;const label=btn.querySelector('span');if(label)label.textContent=busy?'در حال بررسی...':'ورود به مینی‌اپ'
+}
 
 function statusTimeline(job){
   const st=job.status;
@@ -65,10 +85,11 @@ async function loadDay(){
   $('#dayTitle').textContent=state.date===todayISO()?'امروز':'گزارش روز';$('#dayDate').textContent=pDate(state.date,true);
   try{
     const d=await api(`/api/mini/day?date=${encodeURIComponent(state.date)}`);
-    list.innerHTML=d.jobs.length?d.jobs.map(jobCard).join(''):'<div class="empty">برای این روز سرویس نهایی یا کنسلی ثبت نشده است.</div>';
+    const emptyText=state.date===todayISO()?'اتصال به دیتابیس برقرار است؛ برای امروز هنوز سرویس نهایی یا کنسلی ثبت نشده. برای دیدن سوابق، «روز قبل» را بزن.':'برای این روز سرویس نهایی یا کنسلی ثبت نشده است.';
+    list.innerHTML=d.jobs.length?d.jobs.map(jobCard).join(''):`<div class="empty">${emptyText}</div>`;
     const s=d.summary;
     $('#daySummary').innerHTML=`<div class="summary-card green">${icon('i-services')}<div><span>انجام شده</span><b>${fa(s.completed)}</b></div></div><div class="summary-card red">${icon('i-reminders')}<div><span>کنسل شده</span><b>${fa(s.cancelled)}</b></div></div><div class="summary-card cyan">${icon('i-finance')}<div><span>دریافتی</span><b>${money(s.received)}</b></div></div><div class="summary-card gold">${icon('i-insights')}<div><span>سهم شرکت</span><b>${money(s.company_share)}</b></div></div>`;
-  }catch(e){list.innerHTML=`<div class="empty error">${escapeHtml(e.message)}</div>`}
+  }catch(e){list.innerHTML=`<div class="empty error">${escapeHtml(errorText(e))}</div>`;$('#daySummary').innerHTML=''}
 }
 function navigate(view,sound=true){
   state.view=view;$$('.view').forEach(v=>v.classList.add('hidden'));$(`#${view}View`)?.classList.remove('hidden');$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(sound)interactive('nav');if(view==='today')loadDay();if(view==='finance')loadFinance();if(view==='customers')setTimeout(()=>$('#customerSearch')?.focus(),120)
@@ -80,7 +101,7 @@ function customerCard(c){
 }
 async function searchCustomers(){
   const q=$('#customerSearch').value.trim(),box=$('#customerResults');if(q.length<2){box.innerHTML='<div class="empty">حداقل دو حرف از نام، شماره یا آدرس را بنویس.</div>';return}
-  $('#searchBusy').textContent='…';try{const rows=await api(`/api/mini/customers?q=${encodeURIComponent(q)}`);box.innerHTML=rows.length?rows.map(customerCard).join(''):'<div class="empty">مشتری پیدا نشد.</div>'}catch(e){box.innerHTML=`<div class="empty error">${escapeHtml(e.message)}</div>`}finally{$('#searchBusy').textContent=''}
+  $('#searchBusy').textContent='…';try{const rows=await api(`/api/mini/customers?q=${encodeURIComponent(q)}`);box.innerHTML=rows.length?rows.map(customerCard).join(''):'<div class="empty">مشتری پیدا نشد.</div>'}catch(e){box.innerHTML=`<div class="empty error">${escapeHtml(errorText(e))}</div>`}finally{$('#searchBusy').textContent=''}
 }
 function historyItem(x){
   const isCancel=x.status==='cancelled',when=x.visited_at||x.completed_at||x.cancelled_at||x.created_at||x.received_at,title=x.service_type||x.job_type||'سرویس';
@@ -94,7 +115,7 @@ async function openCustomer(id){
     const all=[...(d.visits||[]),...(d.bale_jobs||[])].sort((a,b)=>new Date(b.visited_at||b.completed_at||b.cancelled_at||b.created_at||b.received_at)-new Date(a.visited_at||a.completed_at||a.cancelled_at||a.created_at||a.received_at));
     box.innerHTML=`<button id="backSearch" class="back-btn">${icon('i-route')}<span>بازگشت به جستجو</span></button><article class="customer-card detail"><div class="customer-header"><div class="customer-avatar">${icon('i-customers')}</div><div class="customer-id"><div class="customer-name">${escapeHtml(name)}</div><small>${escapeHtml((c.phones||[]).join(' • '))}</small></div></div><div class="customer-lines"><div>${icon('i-map')}<span>${escapeHtml(c.address||'آدرس ثبت نشده')}</span></div><div>${icon('i-daily')}<span>پلاک: ${escapeHtml(c.plaque||'—')} • واحد: ${escapeHtml(c.unit_no||'—')}</span></div>${c.device_model?`<div>${icon('i-services')}<span>مدل دستگاه: ${escapeHtml(c.device_model)}</span></div>`:''}${c.notes?`<div>${icon('i-more')}<span>${escapeHtml(c.notes)}</span></div>`:''}</div><div class="history"><div class="section-title"><span>تاریخچه خدمات</span><i></i></div>${all.length?all.map(historyItem).join(''):'<div class="empty">هنوز سابقه‌ای ثبت نشده است.</div>'}</div></article>`;
     $('#backSearch').onclick=()=>{interactive('nav');searchCustomers()};
-  }catch(e){box.innerHTML=`<div class="empty error">${escapeHtml(e.message)}</div>`}
+  }catch(e){box.innerHTML=`<div class="empty error">${escapeHtml(errorText(e))}</div>`}
 }
 
 function periodFa(p){return p==='daily'?'روزانه':p==='weekly'?'هفتگی':'ماهانه'}
@@ -103,9 +124,11 @@ async function loadFinance(){
   try{
     const d=await api(`/api/mini/finance?period=${state.period}&date=${state.date}`),s=d.summary;
     cards.innerHTML=`<div class="finance-card green">${icon('i-finance')}<span>دریافتی</span><b>${money(s.received_total)}</b><i></i></div><div class="finance-card blue">${icon('i-insights')}<span>سهم شرکت</span><b>${money(s.company_share)}</b><i></i></div><div class="finance-card purple">${icon('i-invoices')}<span>جمع کل</span><b>${money(s.invoice_total)}</b><i></i></div><div class="finance-card gold">${icon('i-sync')}<span>تسویه با شرکت</span><b>${money(s.settled_total)}</b><i></i></div>`;
-    $('#financeDetails').innerHTML=`<div class="detail-row"><span>بازه گزارش</span><b>${pDate(d.from,false)} تا ${pDate(d.to,false)}</b></div><div class="detail-row"><span>تعداد خدمات انجام‌شده</span><b>${fa(s.service_count)} مورد</b></div><div class="detail-row"><span>مجموع دریافتی</span><b>${money(s.received_total)}</b></div><div class="detail-row"><span>سهم شرکت</span><b>${money(s.company_share)}</b></div><div class="detail-row"><span>تسویه انجام‌شده</span><b>${money(s.settled_total)}</b></div><div class="detail-row highlight"><span>مانده قابل تسویه</span><b>${money(s.payable)}</b></div>`;
+    const noData=Number(s.service_count||0)===0&&Number(s.received_total||0)===0&&Number(s.invoice_total||0)===0&&Number(s.settled_total||0)===0;
+    const info=noData?`<div class="empty">${state.period==='daily'&&state.date===todayISO()?'اتصال به دیتابیس برقرار است؛ امروز هنوز اطلاعات مالی ثبت نشده. برای دیدن سوابق، روز قبل یا بازه هفتگی/ماهانه را انتخاب کن.':'برای این بازه هنوز اطلاعات مالی ثبت نشده است.'}</div>`:'';
+    $('#financeDetails').innerHTML=`${info}<div class="detail-row"><span>بازه گزارش</span><b>${pDate(d.from,false)} تا ${pDate(d.to,false)}</b></div><div class="detail-row"><span>تعداد خدمات انجام‌شده</span><b>${fa(s.service_count)} مورد</b></div><div class="detail-row"><span>مجموع دریافتی</span><b>${money(s.received_total)}</b></div><div class="detail-row"><span>سهم شرکت</span><b>${money(s.company_share)}</b></div><div class="detail-row"><span>تسویه انجام‌شده</span><b>${money(s.settled_total)}</b></div><div class="detail-row highlight"><span>مانده قابل تسویه</span><b>${money(s.payable)}</b></div>`;
     renderChart(d.chart||[]);$('#chartSubtitle').textContent=`${periodFa(state.period)} • ${fa(s.service_count)} سرویس • ${money(s.received_total)}`;$$('#financeTabs button').forEach(b=>b.classList.toggle('active',b.dataset.period===state.period));
-  }catch(e){cards.innerHTML=`<div class="empty error wide">${escapeHtml(e.message)}</div>`;$('#financeDetails').innerHTML=''}
+  }catch(e){cards.innerHTML=`<div class="empty error wide">${escapeHtml(errorText(e))}</div>`;$('#financeDetails').innerHTML=''}
 }
 function renderChart(points){
   const box=$('#barChart');if(!points.length){box.innerHTML='<div class="empty">برای این بازه داده‌ای وجود ندارد.</div>';return}
@@ -119,7 +142,7 @@ async function changePassword(ev){
   try{
     await api('/api/mini/password',{method:'POST',body:JSON.stringify({current_password:$('#currentPassword').value,new_password:$('#newPassword').value,confirm_password:$('#confirmPassword').value})});
     $('#passwordForm').reset();out.textContent='رمز عبور با موفقیت تغییر کرد';out.className='form-message show success';await beep('success');toast('رمز جدید ذخیره شد','success');
-  }catch(e){out.textContent=e.message;out.className='form-message show error';await beep('error')}
+  }catch(e){out.textContent=errorText(e);out.className='form-message show error';await beep('error')}
 }
 
 function bind(){
@@ -131,7 +154,14 @@ function bind(){
   $('#customerResults').addEventListener('click',e=>{const c=e.target.closest('[data-customer]');if(c)openCustomer(c.dataset.customer)});
   $$('#financeTabs button').forEach(b=>b.onclick=()=>{state.period=b.dataset.period;interactive('nav');loadFinance()});
   $('#chartToggle').onclick=toggleChart;$('#settingsToggle').onclick=toggleSettings;$('#passwordForm').onsubmit=changePassword;
-  $('#loginForm').onsubmit=async ev=>{ev.preventDefault();await unlockFromGesture();const err=$('#loginError');err.textContent='';try{await api('/api/mini/login',{method:'POST',body:JSON.stringify({username:'admin',password:$('#password').value})});$('#password').value='';await beep('success');showApp()}catch(e){err.textContent=e.message;await beep('error')}};
+  $('#loginForm').onsubmit=async ev=>{
+    ev.preventDefault();if(state.loginBusy)return;await unlockFromGesture();const err=$('#loginError'),password=$('#password').value;err.textContent='';
+    if(!password){err.textContent='رمز عبور را وارد کن.';await beep('error');return}
+    setLoginBusy(true);
+    try{await api('/api/mini/login',{method:'POST',body:JSON.stringify({username:'admin',password})});$('#password').value='';await beep('success');showApp()}
+    catch(e){err.textContent=errorText(e);await beep('error')}
+    finally{setLoginBusy(false)}
+  };
   document.addEventListener('pointerdown',unlockFromGesture,{passive:true});document.addEventListener('touchend',unlockFromGesture,{passive:true});
   window.addEventListener('pageshow',()=>{state.audioUnlocked=false;if(state.sound)void ensureAudio()});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.sound){state.audioUnlocked=false;void ensureAudio()}});
