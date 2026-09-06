@@ -97,3 +97,39 @@ def install_bale_menu_button():
             "menu_button": get_result.get("result") if isinstance(get_result, dict) else get_result,
         }
     )
+
+
+# Temporary one-shot installer. It is intentionally scoped to the separate
+# aquagold-bale Vercel project and this standalone branch, and it only calls
+# setChatMenuButton/getChatMenuButton. It never calls setWebhook.
+_MENU_INSTALL_RESULT = {"attempted": False, "ok": False}
+if (
+    os.getenv("VERCEL_PROJECT_PRODUCTION_URL") == "aquagold-bale.vercel.app"
+    and os.getenv("VERCEL_GIT_COMMIT_REF") == "standalone/aqua-bale-20260906"
+):
+    _MENU_INSTALL_RESULT["attempted"] = True
+    try:
+        _settings = MODULE._settings()
+        _token = _settings.get("bot_token") or ""
+        if not _token:
+            raise RuntimeError("Bale bot token is not configured")
+        _menu_button = {
+            "type": "web_app",
+            "text": "💧 AquaGold",
+            "web_app": {"url": DEFAULT_MINIAPP_URL},
+        }
+        _set = MODULE._bale_call(_token, "setChatMenuButton", {"menu_button": _menu_button})
+        _get = MODULE._bale_call(_token, "getChatMenuButton", {})
+        _MENU_INSTALL_RESULT = {
+            "attempted": True,
+            "ok": bool(_set.get("ok", True)),
+            "menu_button": _get.get("result") if isinstance(_get, dict) else _get,
+            "webhook_changed": False,
+        }
+    except Exception as exc:
+        _MENU_INSTALL_RESULT = {"attempted": True, "ok": False, "error": str(exc), "webhook_changed": False}
+
+
+@app.get("/health/menu-button")
+def menu_button_health():
+    return jsonify(_MENU_INSTALL_RESULT)
