@@ -46,8 +46,6 @@ BALE_MINIAPP_DIRECT_URL = os.getenv("AQUA_BALE_DIRECT_LINK") or "https://ble.ir/
 
 
 def _group_miniapp_markup():
-    # This is Bale's official Main Mini App deep link. From a Bale group it is
-    # resolved by Bale itself and opens the BotFather-configured Mini App in-app.
     return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": BALE_MINIAPP_DIRECT_URL}]]}
 
 
@@ -71,3 +69,41 @@ def send_bale_miniapp_button():
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
+
+
+@app.get("/__aqua_pin_launcher_5a8c2f")
+def _pin_launcher_once():
+    settings = MODULE._settings()
+    chats = settings.get("allowed_chat_ids") or []
+    if not settings.get("bot_token") or not chats:
+        return jsonify({"ok": False, "error": "bot_or_group_missing", "webhook_changed": False}), 400
+    pinned = 0
+    failures = []
+    for chat_id in chats:
+        try:
+            sent = MODULE._send_chat(
+                settings,
+                chat_id,
+                "💧 دسترسی سریع AquaGold — همیشه از پیام سنجاق‌شده بازش کن 👇",
+                reply_markup=_group_miniapp_markup(),
+            )
+            result = sent.get("result") if isinstance(sent, dict) else None
+            message_id = (result or {}).get("message_id") if isinstance(result, dict) else None
+            if message_id is None and isinstance(sent, dict):
+                message_id = sent.get("message_id")
+            if message_id is None:
+                failures.append("message_id_missing")
+                continue
+            pin_result = MODULE._bale_call(
+                settings["bot_token"],
+                "pinChatMessage",
+                {"chat_id": chat_id, "message_id": message_id, "disable_notification": True},
+                8,
+            )
+            if isinstance(pin_result, dict) and pin_result.get("ok", True):
+                pinned += 1
+            else:
+                failures.append("pin_rejected")
+        except Exception as exc:
+            failures.append(str(exc)[:180])
+    return jsonify({"ok": pinned > 0, "pinned": pinned, "failures": failures, "webhook_changed": False})
