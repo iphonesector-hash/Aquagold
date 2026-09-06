@@ -11,30 +11,17 @@
     const service=clean(p.service_type).toLowerCase();
     if(service.includes('ساید')||service.includes('یخچال'))p.service_type='ساید';
     else if(service.includes('فیلتر')||service.includes('دستگاه'))p.service_type='فیلتر دستگاه';
-    else if(!['ساید','فیلتر دستگاه','دیگر'].includes(p.service_type))p.service_type='دیگر';
+    else if(service.includes('نصب'))p.service_type='نصب';
+    else if(service==='سرویس'||service.includes('سرویس'))p.service_type='سرویس';
+    else if(!['ساید','فیلتر دستگاه','نصب','سرویس','دیگر'].includes(p.service_type))p.service_type='دیگر';
     const payment=clean(p.payment_method).toLowerCase().replace(/‌/g,' ');
     if(/کارت\s*به\s*کارت|transfer|card.?to.?card/.test(payment))p.payment_method='transfer';
     else if(/کارتخوان|کارت\s*خوان|\bpos\b|card.?reader/.test(payment))p.payment_method='card';
     else if(/نقد|cash/.test(payment))p.payment_method='cash';
-    else if(!['cash','transfer','card'].includes(p.payment_method))p.payment_method='';
-  }
-
-  function mountSmartControls(state){
-    if(!state?.smartParsed)return;
-    const section=[...document.querySelectorAll('section')].find(el=>(el.getAttribute('x-show')||'').includes("page==='smart'"));
-    const card=section?.querySelector('.smart-result');
-    if(!card||card.querySelector('#aqua-smart-choice-controls'))return;
-    const gps=[...card.querySelectorAll('div')].find(el=>el.getAttribute?.(':class')?.includes('smartGps'));
-    const controls=document.createElement('div');
-    controls.id='aqua-smart-choice-controls';
-    controls.className='grid sm:grid-cols-2 gap-3 mt-4 aqua-smart-choice-controls';
-    controls.innerHTML=`
-      <label class="block"><span class="text-xs muted block mb-1">نوع سرویس</span><select class="field" x-model="smartParsed.service_type"><option value="ساید">ساید</option><option value="فیلتر دستگاه">فیلتر دستگاه</option><option value="دیگر">دیگر</option></select></label>
-      <label class="block"><span class="text-xs muted block mb-1">روش پرداخت</span><select class="field" x-model="smartParsed.payment_method"><option value="">انتخاب روش پرداخت</option><option value="cash">نقد</option><option value="transfer">کارت به کارت</option><option value="card">کارتخوان</option></select></label>
-      <label class="block sm:col-span-2"><span class="text-xs muted block mb-1">توضیحات / شرح سرویس</span><textarea class="field min-h-24" x-model="smartParsed.description" placeholder="اگر «دیگر» را انتخاب کردی، نوع سرویس و جزئیاتش را اینجا بنویس"></textarea></label>`;
-    if(gps?.parentElement)gps.parentElement.insertBefore(controls,gps);
-    else card.appendChild(controls);
-    try{window.Alpine?.initTree?.(controls)}catch(error){console.warn('Aqua smart controls init',error)}
+    else if(/چک|cheque|check/.test(payment))p.payment_method='cheque';
+    else if(/نسیه|credit/.test(payment))p.payment_method='credit';
+    else if(/سایر|other/.test(payment))p.payment_method='other';
+    else if(!['cash','transfer','card','cheque','credit','other'].includes(p.payment_method))p.payment_method='';
   }
 
   function mountLatestServicesAccordion(){
@@ -99,16 +86,14 @@
     state.analyzeSmart=async function(...args){
       const result=await oldAnalyze?.apply(this,args);
       normalizeChoices(this);
-      setTimeout(()=>mountSmartControls(this),30);
-      setTimeout(()=>mountSmartControls(this),180);
       return result;
     };
 
     state.registerSmart=async function(...args){
       normalizeChoices(this);
       if(this.smartParsed){
-        if(!['ساید','فیلتر دستگاه','دیگر'].includes(clean(this.smartParsed.service_type))){this.toast?.('نوع سرویس را انتخاب کن','error');return false}
-        if(!['cash','transfer','card'].includes(clean(this.smartParsed.payment_method))){this.toast?.('روش پرداخت را انتخاب کن','error');return false}
+        if(!['ساید','فیلتر دستگاه','نصب','سرویس','دیگر'].includes(clean(this.smartParsed.service_type))){this.toast?.('نوع سرویس را انتخاب کن','error');return false}
+        if(!['cash','transfer','card','cheque','credit','other'].includes(clean(this.smartParsed.payment_method))){this.toast?.('روش پرداخت را انتخاب کن','error');return false}
         if(this.smartParsed.service_type==='دیگر'&&!clean(this.smartParsed.description)){this.toast?.('برای «دیگر» توضیحات سرویس را بنویس','error');return false}
       }
       return oldRegister?.apply(this,args);
@@ -193,7 +178,6 @@
 
     state.go=async function(page,...args){
       const result=await oldGo?.apply(this,[page,...args]);
-      if(page==='smart')setTimeout(()=>mountSmartControls(this),80);
       if(page==='dashboard')setTimeout(mountLatestServicesAccordion,80);
       if(page==='insights')setTimeout(()=>this.loadInsightsRequested?.(),80);
       if(page==='finance')setTimeout(()=>this.renderRound4Finance?.(),120);
@@ -204,7 +188,6 @@
     state.refreshAll=async function(...args){
       const result=await oldRefresh?.apply(this,args);
       if(this.page==='dashboard')setTimeout(mountLatestServicesAccordion,40);
-      if(this.page==='smart')setTimeout(()=>mountSmartControls(this),40);
       if(this.page==='insights')await this.loadInsightsRequested?.();
       if(this.page==='finance')setTimeout(()=>this.renderRound4Finance?.(),80);
       if(this.page==='map')setTimeout(()=>this.renderRequestedWorkPins?.(),100);
@@ -223,7 +206,6 @@
         #monthlyChart,#yearlyChart,#serviceChart{display:block!important;width:100%!important;height:270px!important;max-height:270px!important;min-height:270px!important}
         #paymentMethodChart{display:block!important;width:100%!important;height:280px!important;max-height:280px!important}
         .aq-work-marker{background:transparent!important;border:0!important}.aq-work-marker span{display:block;width:24px;height:24px;border-radius:50% 50% 50% 0;background:#ef3340;border:3px solid #fff;box-shadow:0 4px 14px rgba(239,51,64,.48);transform:rotate(-45deg)}
-        .aqua-smart-choice-controls .field{font-size:16px}
         @media(max-width:520px){.aqua-payment-chart-wrap{height:245px}#monthlyChart,#yearlyChart,#serviceChart{height:235px!important;max-height:235px!important;min-height:235px!important}#paymentMethodChart{height:235px!important;max-height:235px!important}}
       `;
       document.head.appendChild(style);

@@ -2,7 +2,7 @@
 
 Keeps a successful Smart Intake submit from being followed by a misleading
 second validation error, recovers the surname when necessary, and owns the
-last branch-only UI pass used for the September 6 field fixes.
+Smart-to-Bale completion bridge without changing unrelated Aqua flows.
 '''
 from __future__ import annotations
 
@@ -55,9 +55,70 @@ def _fill_missing_surname():
             app_v3.logger.warning("smart_register_surname_reparse_failed: %s", exc)
 
 
+def _link_bale_job_to_smart_visit(response, bale_job_id):
+    if not bale_job_id or response.status_code >= 300 or not response.is_json:
+        return response
+
+    payload = response.get_json(silent=True) or {}
+    visit_id = payload.get("visit_id")
+    customer_id = payload.get("customer_id")
+    finalized = False
+
+    if visit_id and customer_id:
+        try:
+            with app_v3.get_db() as db, db.cursor() as cur:
+                cur.execute(
+                    "select status,service_visit_id from bale_jobs where id=%s::uuid for update",
+                    (str(bale_job_id),),
+                )
+                job = cur.fetchone()
+                if job and job["status"] in {"new", "review"}:
+                    cur.execute(
+                        "select received_amount from service_visits where id=%s::uuid and customer_id=%s::uuid",
+                        (str(visit_id), str(customer_id)),
+                    )
+                    service = cur.fetchone()
+                    if service:
+                        cur.execute(
+                            """update bale_jobs
+                               set status='completed',customer_id=%s::uuid,service_visit_id=%s::uuid,
+                                   received_amount=%s,completed_at=coalesce(completed_at,now()),updated_at=now()
+                               where id=%s::uuid and status in ('new','review')
+                               returning id""",
+                            (str(customer_id), str(visit_id), service.get("received_amount") or 0, str(bale_job_id)),
+                        )
+                        updated = cur.fetchone()
+                        finalized = bool(updated)
+                        if finalized:
+                            app_v3.audit(
+                                cur,
+                                "bale_job",
+                                bale_job_id,
+                                "smart_register_finalize",
+                                before={"status": job["status"]},
+                                after={"service_visit_id": str(visit_id), "customer_id": str(customer_id)},
+                            )
+                elif job and job["status"] == "completed":
+                    finalized = True
+        except Exception as exc:
+            app_v3.logger.warning("smart_register_bale_link_failed: %s", exc)
+
+    payload["bale_job_id"] = str(bale_job_id)
+    payload["bale_finalized"] = bool(finalized)
+    response.set_data(app_v3.app.json.dumps(payload))
+    response.headers["Content-Type"] = "application/json; charset=utf-8"
+    return response
+
+
 def _smart_register_resilient():
+    data = request.get_json(silent=True)
+    bale_job_id = None
+    if isinstance(data, dict) and data.get("bale_job_id") not in (None, ""):
+        bale_job_id = app_v3.valid_uuid(data.get("bale_job_id"), "شناسه کار بله")
+
     _fill_missing_surname()
-    return _original_smart_register()
+    response = app_v3.app.make_response(_original_smart_register())
+    return _link_bale_job_to_smart_visit(response, bale_job_id)
 
 
 if _original_smart_register is not None:
@@ -77,6 +138,33 @@ SMART_GUARD_SCRIPT = r'''
     state.registerSmart=async function(){
       if(this.smartRegisterBusy)return;
       this.smartRegisterBusy=true;
+
+      const pending=this.baleSmartJob?{...this.baleSmartJob}:null;
+      const pendingId=String(pending?.id||'').trim();
+      const savedApi=this.api;
+      const savedOpenCustomer=this.openCustomer;
+      let smartResponse=null;
+      let result;
+
+      if(pendingId){
+        // The Smart register request is the single owner of Bale completion.
+        // Hide the pending marker from older inner wrappers so they cannot run
+        // a second finalize request or open the customer detail page first.
+        this.baleSmartJob=null;
+        if(typeof savedOpenCustomer==='function')this.openCustomer=async()=>{};
+        this.api=async (path,opts={})=>{
+          if(path==='/smart/register'&&String(opts?.method||'GET').toUpperCase()==='POST'){
+            let body={};
+            try{body=JSON.parse(opts?.body||'{}')||{}}catch{}
+            body.bale_job_id=pendingId;
+            const response=await savedApi.call(this,path,{...opts,body:JSON.stringify(body)});
+            smartResponse=response;
+            return response;
+          }
+          return savedApi.call(this,path,opts);
+        };
+      }
+
       try{
         if(this.smartParsed){
           const fields=[...document.querySelectorAll('input[placeholder="نام خانوادگی"]')];
@@ -89,10 +177,37 @@ SMART_GUARD_SCRIPT = r'''
             if(surname)this.smartParsed.last_name=surname;
           }
         }
-        return await original?.();
+        result=await original?.();
       }finally{
+        if(pendingId){
+          this.api=savedApi;
+          if(typeof savedOpenCustomer==='function')this.openCustomer=savedOpenCustomer;
+        }
         this.smartRegisterBusy=false;
       }
+
+      if(pendingId){
+        if(smartResponse?.bale_finalized===true){
+          this.baleSmartJob=null;
+          this.smartText='';
+          this.smartParsed=null;
+          this.smartSuggestions=[];
+          this.smartCustomerId='';
+          this.smartGps={};
+          this.selectedCustomer=null;
+          this.selectedCustomerJobsRemote=[];
+          this.baleJobs=(this.baleJobs||[]).filter(job=>String(job?.id||'')!==pendingId);
+          try{await Promise.all([this.loadBaleCounts?.(),this.loadBaleJobs?.('new')])}catch{}
+          this.baleJobs=(this.baleJobs||[]).filter(job=>String(job?.id||'')!==pendingId);
+          try{await this.go?.('bale-jobs')}catch{this.page='bale-jobs'}
+          this.toast?.('ثبت شد و کار از فهرست کارهای بله خارج شد','success');
+        }else{
+          // Keep the original job reference available to the older outer guard
+          // as a fallback only when the direct server link could not complete.
+          this.baleSmartJob=pending;
+        }
+      }
+      return result;
     };
     return state;
   };
