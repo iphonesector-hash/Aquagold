@@ -54,8 +54,8 @@ def _validated_miniapp_url(value: str) -> str:
 
 
 def _markup(url: str):
-    # Bale shows web_app buttons in groups but some clients do not launch them.
-    # A normal HTTPS URL button is reliable in groups and still opens the same miniapp URL.
+    # Bale may display web_app buttons in groups without launching them.
+    # A normal HTTPS URL button reliably opens the same app URL from group chats.
     return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": url}]]}
 
 
@@ -73,23 +73,6 @@ def send_bale_miniapp_button():
     sent = 0
     for chat_id in chats:
         result = MODULE._send_chat(settings, chat_id, "💧 AquaGold Bale آماده است. این دکمه مستقیم باز می‌شود 👇", reply_markup=_markup(url))
-        if isinstance(result, dict) and result.get("ok", True):
-            sent += 1
-    return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
-
-
-@app.get("/__aqua_resend_link_button_7f2c1d9a")
-def _one_time_resend_link_button():
-    settings = MODULE._settings()
-    chats = settings.get("allowed_chat_ids") or []
-    sent = 0
-    for chat_id in chats:
-        result = MODULE._send_chat(
-            settings,
-            chat_id,
-            "💧 نسخه اصلاح‌شده دکمه AquaGold آماده است. از دکمه زیر بازش کن 👇",
-            reply_markup=_markup(DEFAULT_MINIAPP_URL),
-        )
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
