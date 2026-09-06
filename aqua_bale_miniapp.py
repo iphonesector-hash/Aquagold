@@ -1,9 +1,10 @@
-"""AquaGold Bale Mini App: isolated read-only reporting surface."""
+"""AquaGold Bale Mini App: isolated reporting and settings surface."""
 from __future__ import annotations
 
 import hashlib
 import hmac
 from datetime import date, datetime, timedelta, timezone
+from functools import wraps
 from zoneinfo import ZoneInfo
 
 from flask import jsonify, make_response, request
@@ -15,7 +16,8 @@ from aquagold_validation import ValidationError
 TEHRAN = ZoneInfo("Asia/Tehran")
 MINI_COOKIE = "aqua_bale_mini_session"
 MINI_MAX_AGE = 7 * 24 * 3600
-# SHA-256 of the private operator password. Keep the plaintext out of this public repo.
+MINI_AUTH_KEY = "aqua_bale_mini_auth"
+# Fallback SHA-256 for the initial operator password. Plaintext is never stored in source/database.
 MINI_PASSWORD_SHA256 = "49cad93a2f1e02d113ffd7e1a2b1ae72807225d95d3be5074d90e3ee0a5a18cd"
 
 
@@ -35,8 +37,6 @@ def _mini_authorized():
 
 
 def mini_required(fn):
-    from functools import wraps
-
     @wraps(fn)
     def wrapped(*args, **kwargs):
         if not _mini_authorized():
@@ -44,6 +44,27 @@ def mini_required(fn):
         return fn(*args, **kwargs)
 
     return wrapped
+
+
+def _password_hash(cur=None):
+    own = cur is None
+    ctx = app_v3.get_db() if own else None
+    db = ctx.__enter__() if own else None
+    cursor = db.cursor() if own else cur
+    try:
+        cursor.execute("select value from app_settings where key=%s", (MINI_AUTH_KEY,))
+        row = cursor.fetchone()
+        value = dict((row or {}).get("value") or {})
+        stored = str(value.get("password_sha256") or "").strip().lower()
+        return stored if len(stored) == 64 else MINI_PASSWORD_SHA256
+    finally:
+        if own:
+            cursor.close()
+            ctx.__exit__(None, None, None)
+
+
+def _hash_password(value):
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
 
 
 def _parse_day(raw):
@@ -60,7 +81,7 @@ def _day_bounds(day):
 
 
 def _json_value(value):
-    if isinstance(value, datetime):
+    if isinstance(value, (datetime, date)):
         return value.isoformat()
     if hasattr(value, "__float__") and not isinstance(value, (str, bytes, int, float, bool)):
         try:
@@ -77,10 +98,7 @@ def _row(row):
 def _jalali_to_gregorian(jy, jm, jd):
     jy += 1595
     days = -355668 + 365 * jy + (jy // 33) * 8 + ((jy % 33) + 3) // 4 + jd
-    if jm < 7:
-        days += (jm - 1) * 31
-    else:
-        days += (jm - 7) * 30 + 186
+    days += (jm - 1) * 31 if jm < 7 else (jm - 7) * 30 + 186
     gy = 400 * (days // 146097)
     days %= 146097
     if days > 36524:
@@ -116,11 +134,9 @@ def _gregorian_to_jalali(g):
         jy += (days - 1) // 365
         days = (days - 1) % 365
     if days < 186:
-        jm = 1 + days // 31
-        jd = 1 + days % 31
+        jm, jd = 1 + days // 31, 1 + days % 31
     else:
-        jm = 7 + (days - 186) // 30
-        jd = 1 + (days - 186) % 30
+        jm, jd = 7 + (days - 186) // 30, 1 + (days - 186) % 30
     return jy, jm, jd
 
 
@@ -128,16 +144,12 @@ def _period_bounds(anchor, period):
     if period == "daily":
         return anchor, anchor + timedelta(days=1)
     if period == "weekly":
-        # Iranian week: Saturday through Friday.
         start = anchor - timedelta(days=(anchor.weekday() - 5) % 7)
         return start, start + timedelta(days=7)
     if period == "monthly":
         jy, jm, _ = _gregorian_to_jalali(anchor)
         start = _jalali_to_gregorian(jy, jm, 1)
-        if jm == 12:
-            end = _jalali_to_gregorian(jy + 1, 1, 1)
-        else:
-            end = _jalali_to_gregorian(jy, jm + 1, 1)
+        end = _jalali_to_gregorian(jy + 1, 1, 1) if jm == 12 else _jalali_to_gregorian(jy, jm + 1, 1)
         return start, end
     raise ValidationError("بازه گزارش معتبر نیست")
 
@@ -155,7 +167,8 @@ def aqua_bale_mini_page():
 
 @app_v3.app.get("/api/mini/session")
 def aqua_bale_mini_session():
-    return jsonify({"authenticated": _mini_authorized(), "username": "admin" if _mini_authorized() else None})
+    ok = _mini_authorized()
+    return jsonify({"authenticated": ok, "username": "admin" if ok else None})
 
 
 @app_v3.app.post("/api/mini/login")
@@ -163,21 +176,13 @@ def aqua_bale_mini_session():
 def aqua_bale_mini_login():
     data = request.get_json(silent=True) or {}
     username = str(data.get("username") or "").strip().lower()
-    password = str(data.get("password") or "")
-    digest = hashlib.sha256(password.encode("utf-8")).hexdigest()
-    if username != "admin" or not hmac.compare_digest(digest, MINI_PASSWORD_SHA256):
+    digest = _hash_password(data.get("password"))
+    if username != "admin" or not hmac.compare_digest(digest, _password_hash()):
         return jsonify({"error": "نام کاربری یا رمز عبور اشتباه است"}), 401
     token = _serializer().dumps({"u": "admin"})
     response = make_response(jsonify({"ok": True, "username": "admin"}))
-    response.set_cookie(
-        MINI_COOKIE,
-        token,
-        max_age=MINI_MAX_AGE,
-        httponly=True,
-        secure=app_v3.COOKIE_SECURE,
-        samesite="Lax",
-        path="/",
-    )
+    response.set_cookie(MINI_COOKIE, token, max_age=MINI_MAX_AGE, httponly=True,
+                        secure=app_v3.COOKIE_SECURE, samesite="Lax", path="/")
     return response
 
 
@@ -188,41 +193,97 @@ def aqua_bale_mini_logout():
     return response
 
 
+@app_v3.app.post("/api/mini/password")
+@mini_required
+@app_v3.limiter.limit("6 per minute")
+def aqua_bale_mini_change_password():
+    data = request.get_json(silent=True) or {}
+    current = str(data.get("current_password") or "")
+    new = str(data.get("new_password") or "")
+    confirm = str(data.get("confirm_password") or "")
+    if len(new) < 7:
+        raise ValidationError("رمز جدید باید حداقل ۷ کاراکتر باشد")
+    if new != confirm:
+        raise ValidationError("تکرار رمز جدید یکسان نیست")
+    with app_v3.get_db() as db, db.cursor() as cur:
+        if not hmac.compare_digest(_hash_password(current), _password_hash(cur)):
+            raise ValidationError("رمز فعلی اشتباه است")
+        cur.execute(
+            """insert into app_settings(key,value,updated_at) values(%s,%s,now())
+               on conflict(key) do update set value=excluded.value,updated_at=now()""",
+            (MINI_AUTH_KEY, app_v3.Jsonb({"password_sha256": _hash_password(new)})),
+        )
+    return jsonify({"ok": True})
+
+
 @app_v3.app.get("/api/mini/day")
 @mini_required
 def aqua_bale_mini_day():
+    """Mirror the main Solar daily report: finalized service visits + Bale cancellations."""
     day = _parse_day(request.args.get("date"))
     start, end = _day_bounds(day)
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute(
             """
-            select b.id,b.customer_name,b.phone,b.address,b.job_type,b.status,b.received_at,
-                   b.completed_at,b.cancelled_at,b.cancel_reason,b.customer_id,b.service_visit_id,
-                   coalesce(b.received_amount,s.received_amount,0)::bigint received_amount,
-                   coalesce(s.company_share_amount,0)::bigint company_share_amount
-              from bale_jobs b
-              left join service_visits s on s.id=b.service_visit_id
-             where b.received_at >= %s and b.received_at < %s
-             order by b.received_at asc
+            select s.id,
+                   c.last_name as customer_name,
+                   coalesce((select p.phone from customer_phones p where p.customer_id=c.id order by p.is_primary desc,p.id limit 1),'') phone,
+                   c.address,
+                   coalesce(s.service_type,'سرویس') job_type,
+                   'completed'::text status,
+                   coalesce(s.visited_at,s.created_at) received_at,
+                   coalesce(s.visited_at,s.created_at) completed_at,
+                   null::timestamptz cancelled_at,
+                   null::text cancel_reason,
+                   c.id customer_id,
+                   s.id service_visit_id,
+                   coalesce(s.received_amount,0)::bigint received_amount,
+                   coalesce(s.company_share_amount,0)::bigint company_share_amount,
+                   'service'::text source
+              from service_visits s
+              join customers_v2 c on c.id=s.customer_id
+             where s.status not in ('cancelled','scheduled')
+               and coalesce(s.visited_at,s.created_at) >= %s
+               and coalesce(s.visited_at,s.created_at) < %s
             """,
             (start, end),
         )
         jobs = [_row(r) for r in cur.fetchall()]
+        cur.execute(
+            """
+            select b.id,
+                   coalesce(c.last_name,nullif(b.customer_name,''),'بدون نام') customer_name,
+                   coalesce((select p.phone from customer_phones p where p.customer_id=c.id order by p.is_primary desc,p.id limit 1),b.phone,'') phone,
+                   coalesce(c.address,b.address) address,
+                   coalesce(b.job_type,'سرویس') job_type,
+                   'cancelled'::text status,
+                   coalesce(b.cancelled_at,b.updated_at,b.received_at) received_at,
+                   null::timestamptz completed_at,
+                   coalesce(b.cancelled_at,b.updated_at,b.received_at) cancelled_at,
+                   b.cancel_reason,
+                   b.customer_id,
+                   b.service_visit_id,
+                   0::bigint received_amount,
+                   0::bigint company_share_amount,
+                   'cancellation'::text source
+              from bale_jobs b
+              left join customers_v2 c on c.id=b.customer_id
+             where b.status='cancelled'
+               and coalesce(b.cancelled_at,b.updated_at,b.received_at) >= %s
+               and coalesce(b.cancelled_at,b.updated_at,b.received_at) < %s
+            """,
+            (start, end),
+        )
+        jobs.extend(_row(r) for r in cur.fetchall())
+    jobs.sort(key=lambda x: str(x.get("received_at") or ""))
     completed = sum(1 for x in jobs if x["status"] == "completed")
     cancelled = sum(1 for x in jobs if x["status"] == "cancelled")
     received = sum(int(x.get("received_amount") or 0) for x in jobs if x["status"] == "completed")
     company = sum(int(x.get("company_share_amount") or 0) for x in jobs if x["status"] == "completed")
-    return jsonify({
-        "date": day.isoformat(),
-        "jobs": jobs,
-        "summary": {
-            "total": len(jobs),
-            "completed": completed,
-            "cancelled": cancelled,
-            "received": received,
-            "company_share": company,
-        },
-    })
+    return jsonify({"date": day.isoformat(), "jobs": jobs, "summary": {
+        "total": completed + cancelled, "completed": completed, "cancelled": cancelled,
+        "received": received, "company_share": company,
+    }})
 
 
 @app_v3.app.get("/api/mini/customers")
@@ -232,30 +293,34 @@ def aqua_bale_mini_customers():
     if len(q) < 2:
         return jsonify([])
     like = f"%{q}%"
-    phone_like = f"%{app_v3.normalize_phone(q)}%" if any(ch.isdigit() for ch in q.translate(app_v3.DIGIT_TRANS)) else "%__never__%"
+    normalized = app_v3.normalize_phone(q)
+    phone_like = f"%{normalized}%" if normalized else "%__never__%"
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute(
             """
             select c.id,c.first_name,c.last_name,c.address,c.plaque,c.unit_no,c.device_model,c.notes,c.created_at,
                    coalesce((select json_agg(p.phone order by p.is_primary desc,p.id) from customer_phones p where p.customer_id=c.id),'[]'::json) phones,
-                   (select count(*)::int from service_visits s where s.customer_id=c.id) total_services,
-                   (select count(*)::int from service_visits s where s.customer_id=c.id and s.status='completed') completed_services,
+                   (select count(*)::int from service_visits s where s.customer_id=c.id and s.status not in ('cancelled','scheduled')) completed_services,
                    (select count(*)::int from bale_jobs b where b.customer_id=c.id and b.status='cancelled') cancelled_services,
-                   coalesce((select sum(s.received_amount)::bigint from service_visits s where s.customer_id=c.id and s.status='completed'),0) total_received,
-                   (select max(coalesce(s.visited_at,s.created_at)) from service_visits s where s.customer_id=c.id) last_service_at
+                   coalesce((select sum(s.received_amount)::bigint from service_visits s where s.customer_id=c.id and s.status not in ('cancelled','scheduled')),0) total_received,
+                   (select max(coalesce(s.visited_at,s.created_at)) from service_visits s where s.customer_id=c.id and s.status not in ('cancelled','scheduled')) last_service_at
               from customers_v2 c
              where not c.archived
-               and (
-                    concat_ws(' ',c.first_name,c.last_name) ilike %s
+               and (concat_ws(' ',c.first_name,c.last_name) ilike %s
                     or coalesce(c.address,'') ilike %s
-                    or exists(select 1 from customer_phones p where p.customer_id=c.id and p.phone like %s)
-               )
+                    or exists(select 1 from customer_phones p where p.customer_id=c.id and p.phone like %s))
              order by c.updated_at desc
              limit 20
             """,
             (like, like, phone_like),
         )
-        rows = [_row(r) for r in cur.fetchall()]
+        rows = []
+        for raw in cur.fetchall():
+            item = _row(raw)
+            item["completed_services"] = int(item.get("completed_services") or 0)
+            item["cancelled_services"] = int(item.get("cancelled_services") or 0)
+            item["total_services"] = item["completed_services"] + item["cancelled_services"]
+            rows.append(item)
     return jsonify(rows)
 
 
@@ -274,7 +339,9 @@ def aqua_bale_mini_customer_detail(customer_id):
         if not customer:
             return jsonify({"error": "مشتری پیدا نشد"}), 404
         cur.execute(
-            """select id,service_type,description,status,payment_method,invoice_amount,received_amount,company_share_amount,
+            """select id,service_type,description,
+                      case when status in ('cancelled','scheduled') then status else 'completed' end status,
+                      payment_method,invoice_amount,received_amount,company_share_amount,
                       scheduled_from,scheduled_until,visited_at,created_at
                  from service_visits where customer_id=%s::uuid
                  order by coalesce(visited_at,created_at) desc limit 100""",
@@ -283,8 +350,8 @@ def aqua_bale_mini_customer_detail(customer_id):
         visits = [_row(r) for r in cur.fetchall()]
         cur.execute(
             """select id,job_type,status,received_amount,cancel_reason,received_at,completed_at,cancelled_at
-                 from bale_jobs where customer_id=%s::uuid and (service_visit_id is null or status='cancelled')
-                 order by received_at desc limit 100""",
+                 from bale_jobs where customer_id=%s::uuid and status='cancelled'
+                 order by coalesce(cancelled_at,received_at) desc limit 100""",
             (str(customer_id),),
         )
         bale_jobs = [_row(r) for r in cur.fetchall()]
@@ -298,10 +365,7 @@ def aqua_bale_mini_finance():
     anchor = _parse_day(request.args.get("date"))
     start_day, end_day = _period_bounds(anchor, period)
     start, end = _utc_bounds(start_day, end_day)
-
-    chart_start_day = start_day
-    if period == "daily":
-        chart_start_day = start_day - timedelta(days=6)
+    chart_start_day = start_day - timedelta(days=6) if period == "daily" else start_day
     chart_start, chart_end = _utc_bounds(chart_start_day, end_day)
 
     with app_v3.get_db() as db, db.cursor() as cur:
@@ -311,7 +375,8 @@ def aqua_bale_mini_finance():
                       coalesce(sum(received_amount),0)::bigint received_total,
                       coalesce(sum(company_share_amount),0)::bigint company_share
                  from service_visits
-                where status='completed' and coalesce(visited_at,created_at)>=%s and coalesce(visited_at,created_at)<%s""",
+                where status not in ('cancelled','scheduled')
+                  and coalesce(visited_at,created_at)>=%s and coalesce(visited_at,created_at)<%s""",
             (start, end),
         )
         summary = _row(cur.fetchone())
@@ -323,20 +388,20 @@ def aqua_bale_mini_finance():
         summary.update(_row(cur.fetchone()))
         summary["payable"] = max(int(summary.get("company_share") or 0) - int(summary.get("settled_total") or 0), 0)
         cur.execute(
-            """select (timezone('Asia/Tehran',coalesce(visited_at,created_at)))::date day,
+            """select (timezone('Asia/Tehran',coalesce(visited_at,created_at)))::date as report_day,
                       coalesce(sum(received_amount),0)::bigint received,
                       coalesce(sum(company_share_amount),0)::bigint company_share,
                       count(*)::int count
                  from service_visits
-                where status='completed' and coalesce(visited_at,created_at)>=%s and coalesce(visited_at,created_at)<%s
+                where status not in ('cancelled','scheduled')
+                  and coalesce(visited_at,created_at)>=%s and coalesce(visited_at,created_at)<%s
                 group by 1 order by 1""",
             (chart_start, chart_end),
         )
         chart = []
-        for r in cur.fetchall():
-            item = _row(r)
-            if isinstance(r["day"], date):
-                item["day"] = r["day"].isoformat()
+        for raw in cur.fetchall():
+            item = _row(raw)
+            item["day"] = item.pop("report_day")
             chart.append(item)
     return jsonify({
         "period": period,
