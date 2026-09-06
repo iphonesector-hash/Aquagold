@@ -46,6 +46,9 @@ import bale_bridge  # noqa: E402,F401
 import bale_bootstrap  # noqa: E402,F401
 import bale_reports  # noqa: E402,F401
 import bale_inbox_guard  # noqa: E402,F401
+# Isolated read-only reporting Mini App for Bale. It does not replace the web app.
+import aqua_bale_miniapp  # noqa: E402,F401
+import aqua_bale_miniapp_csp  # noqa: E402,F401
 # Preview only: mirror live new/review Bale jobs read-only from main when configured.
 import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
