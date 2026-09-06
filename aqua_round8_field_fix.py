@@ -33,11 +33,11 @@ def finalize_aqua_round8_field_runtime(response):
         body = response.get_data(as_text=True)
 
         # Important: leave every loader/splash asset and observer exactly as the
-        # previous working preview had it. Round 8 is mic + daily edit only.
+        # previous working preview had it. This layer is mic + daily edit only.
         if FINAL_JS + "?" not in body:
             body = body.replace(
                 "</body>",
-                f'<script src="{FINAL_JS}?v=20260906-3"></script></body>',
+                f'<script src="{FINAL_JS}?v=20260906-4"></script></body>',
                 1,
             )
 
