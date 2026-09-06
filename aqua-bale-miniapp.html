@@ -1,1 +1,95 @@
-<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#031427"><title>AquaGold Bale</title><script src="https://tapi.bale.ai/miniapp.js?3"></script><link rel="stylesheet" href="/aqua-bale-miniapp.css?v=1"><style>.bottom-nav{direction:ltr}.bottom-nav .nav-btn{direction:rtl}</style></head><body><div class="ambient"></div><div id="splash" class="splash"><div class="splash-logo-wrap"><img class="splash-logo" src="/assets/aquagold-loading-v20260906b.jpg?aqua-bale-mini=1" alt="AquaGold"></div><h1>AquaGold Bale</h1><p>آب پاک، اعتماد ماندگار</p><div class="loadbar"><i></i></div><small style="margin-top:14px;color:#75a7c8">در حال بارگذاری...</small></div><div id="login" class="login-screen hidden"><form id="loginForm" class="login-card"><div class="login-brand"><div class="login-drop"></div><h2>AquaGold Bale</h2><p>ورود به داشبورد مدیریتی</p></div><div class="field"><label>نام کاربری</label><input id="username" value="admin" readonly autocomplete="username"></div><div class="field"><label>رمز عبور</label><input id="password" type="password" autocomplete="current-password" inputmode="text" placeholder="رمز عبور"></div><button class="login-btn" type="submit">ورود به مینی‌اپ</button><div id="loginError" class="login-error"></div></form></div><main id="root" class="mini-root hidden"><div class="app-shell"><header class="topbar"><div class="brand-mini"><span class="brand-drop"></span><span>AquaGold Bale</span></div><div style="display:flex;gap:8px"><button id="soundBtn" class="icon-btn" aria-label="صدا">🔊</button><button id="logoutBtn" class="icon-btn" aria-label="خروج">⎋</button></div></header><section id="todayView" class="view"><div class="day-head"><div id="dayTitle" class="day-title">امروز</div><div id="dayDate" class="day-date">—</div></div><div class="day-nav"><button id="prevDay"><span class="arrow">‹</span> روز قبل</button><button id="nextDay">روز بعد <span class="arrow">›</span></button></div><div class="section-title">کارهای روز</div><div id="jobsList" class="jobs-list"></div><div id="daySummary" class="summary-grid"></div></section><section id="customersView" class="view hidden"><div class="finance-title"><h1>مشتری‌ها</h1><p>دسترسی سریع به اطلاعات و تاریخچه خدمات</p></div><div class="search-wrap"><div class="search-box"><span>⌕</span><input id="customerSearch" placeholder="نام، شماره یا آدرس مشتری" autocomplete="off"><span id="searchBusy"></span></div></div><div id="customerResults"><div class="empty">نام مشتری را جستجو کن؛ مثلاً «وحیدی»</div></div></section><section id="financeView" class="view hidden"><div class="finance-title"><h1>مالی</h1><p>گزارش‌های مالی و تسویه حساب</p></div><div id="financeCards" class="finance-grid"></div><div id="financeTabs" class="seg-tabs"><button data-period="monthly">ماهانه</button><button data-period="weekly">هفتگی</button><button class="active" data-period="daily">روزانه</button></div><div id="chartAccordion" class="accordion"><button id="chartToggle" class="accordion-head"><span><strong>نمودار دریافتی</strong><small id="chartSubtitle">برای نمایش نمودار لمس کن</small></span><span class="accordion-arrow">⌄</span></button><div class="accordion-body"><div class="chart-wrap"><div id="barChart" class="bar-chart"></div></div></div></div><div id="financeDetails" class="detail-list"></div></section></div><nav class="bottom-nav"><button class="nav-btn" data-view="finance"><span class="nav-icon">▥</span><span>مالی</span></button><button class="nav-btn center active" data-view="today"><span class="nav-icon">▣</span><span>امروز</span></button><button class="nav-btn" data-view="customers"><span class="nav-icon">♟</span><span>مشتری‌ها</span></button></nav></main><div id="toast" class="toast"></div><script src="/aqua-bale-miniapp.js?v=1"></script></body></html>
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#020b18">
+  <title>AquaGold Bale</title>
+  <script src="https://tapi.bale.ai/miniapp.js?3"></script>
+  <link rel="stylesheet" href="/aqua-bale-miniapp.css?v=2">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <div id="splash" class="splash">
+    <div class="splash-orbit" aria-hidden="true"></div>
+    <div class="splash-logo-wrap"><img class="splash-logo" src="/assets/aquagold-bale-mark.svg?v=2" alt="AquaGold Bale"></div>
+    <h1>AquaGold <span>Bale</span></h1>
+    <p>آب پاک، اعتماد ماندگار</p>
+    <div class="loadbar"><i></i></div>
+    <small>در حال همگام‌سازی با AquaGold...</small>
+  </div>
+
+  <div id="login" class="login-screen hidden">
+    <form id="loginForm" class="login-card glass-card">
+      <div class="login-brand"><img src="/assets/aquagold-bale-mark.svg?v=2" alt=""><h2>AquaGold Bale</h2><p>داشبورد مدیریتی سرویس‌ها</p></div>
+      <label class="field"><span>نام کاربری</span><input id="username" value="admin" readonly autocomplete="username"></label>
+      <label class="field"><span>رمز عبور</span><input id="password" type="password" autocomplete="current-password" placeholder="رمز عبور"></label>
+      <button class="login-btn" type="submit"><svg><use href="/assets/aqua-icons.svg#i-logout"></use></svg><span>ورود به مینی‌اپ</span></button>
+      <div id="loginError" class="login-error"></div>
+    </form>
+  </div>
+
+  <main id="root" class="mini-root hidden">
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-mini"><img src="/assets/aquagold-bale-mark.svg?v=2" alt=""><div><b>AquaGold Bale</b><small>مدیریت هوشمند سرویس</small></div></div>
+        <div class="top-actions">
+          <button id="soundBtn" class="icon-btn" aria-label="افکت صوتی"><svg><use href="/assets/aqua-icons.svg#i-voice"></use></svg><span class="sound-state"></span></button>
+          <button id="logoutBtn" class="icon-btn" aria-label="خروج"><svg><use href="/assets/aqua-icons.svg#i-logout"></use></svg></button>
+        </div>
+      </header>
+
+      <section id="todayView" class="view">
+        <div class="hero-title"><span class="eyebrow">AQUAGOLD DAILY</span><h1 id="dayTitle">امروز</h1><p id="dayDate">—</p></div>
+        <div class="day-nav">
+          <button id="prevDay"><svg><use href="/assets/aqua-icons.svg#i-route"></use></svg><span>روز قبل</span></button>
+          <button id="nextDay"><span>روز بعد</span><svg class="flip"><use href="/assets/aqua-icons.svg#i-route"></use></svg></button>
+        </div>
+        <div class="section-title"><span>کارهای روز</span><i></i></div>
+        <div id="jobsList" class="jobs-list"></div>
+        <div id="daySummary" class="summary-grid"></div>
+      </section>
+
+      <section id="customersView" class="view hidden">
+        <div class="hero-title"><span class="eyebrow">CUSTOMER INTELLIGENCE</span><h1>مشتری‌ها</h1><p>اطلاعات نهایی و تاریخچه سرویس‌ها</p></div>
+        <div class="search-wrap"><div class="search-box"><svg><use href="/assets/aqua-icons.svg#i-search"></use></svg><input id="customerSearch" placeholder="نام، شماره یا آدرس مشتری" autocomplete="off"><span id="searchBusy"></span></div></div>
+        <div id="customerResults"><div class="empty">نام مشتری را جستجو کن؛ مثلاً «میرزایی»</div></div>
+      </section>
+
+      <section id="financeView" class="view hidden">
+        <div class="hero-title"><span class="eyebrow gold">FINANCE CENTER</span><h1>مالی</h1><p>گزارش‌های مالی و تسویه حساب</p></div>
+        <div id="financeCards" class="finance-grid"></div>
+        <div id="financeTabs" class="seg-tabs"><button data-period="monthly">ماهانه</button><button data-period="weekly">هفتگی</button><button class="active" data-period="daily">روزانه</button></div>
+        <div id="chartAccordion" class="accordion glass-card">
+          <button id="chartToggle" class="accordion-head"><span class="acc-icon"><svg><use href="/assets/aqua-icons.svg#i-insights"></use></svg></span><span class="acc-copy"><strong>نمودار دریافتی</strong><small id="chartSubtitle">برای نمایش نمودار لمس کن</small></span><span class="accordion-arrow">⌄</span></button>
+          <div class="accordion-body"><div class="chart-wrap"><div id="barChart" class="bar-chart"></div></div></div>
+        </div>
+        <div id="financeDetails" class="detail-list glass-card"></div>
+
+        <div class="settings-block glass-card">
+          <button id="settingsToggle" class="settings-head"><span class="acc-icon"><svg><use href="/assets/aqua-icons.svg#i-settings"></use></svg></span><span><b>تنظیمات</b><small>امنیت و رمز ورود مینی‌اپ</small></span><i>⌄</i></button>
+          <div id="settingsBody" class="settings-body">
+            <form id="passwordForm">
+              <h3>تغییر رمز عبور</h3><p>نام کاربری همچنان <b>admin</b> می‌ماند.</p>
+              <label class="field"><span>رمز فعلی</span><input id="currentPassword" type="password" autocomplete="current-password"></label>
+              <label class="field"><span>رمز جدید</span><input id="newPassword" type="password" autocomplete="new-password"></label>
+              <label class="field"><span>تکرار رمز جدید</span><input id="confirmPassword" type="password" autocomplete="new-password"></label>
+              <button class="settings-save" type="submit"><svg><use href="/assets/aqua-icons.svg#i-sync"></use></svg><span>ذخیره رمز جدید</span></button>
+              <div id="passwordMessage" class="form-message"></div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <nav class="bottom-nav">
+      <button class="nav-btn" data-view="finance"><span class="nav-orb"><svg><use href="/assets/aqua-icons.svg#i-finance"></use></svg></span><span>مالی</span></button>
+      <button class="nav-btn center active" data-view="today"><span class="nav-orb"><svg><use href="/assets/aqua-icons.svg#i-daily"></use></svg></span><span>امروز</span></button>
+      <button class="nav-btn" data-view="customers"><span class="nav-orb"><svg><use href="/assets/aqua-icons.svg#i-customers"></use></svg></span><span>مشتری‌ها</span></button>
+    </nav>
+  </main>
+  <div id="toast" class="toast"></div>
+  <script src="/aqua-bale-miniapp.js?v=2"></script>
+</body>
+</html>
