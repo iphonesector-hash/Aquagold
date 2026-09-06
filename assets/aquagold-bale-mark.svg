@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="t d">
+  <title id="t">AquaGold Bale</title><desc id="d">Neon aqua water drop with a gold core.</desc>
+  <defs>
+    <linearGradient id="drop" x1="42" y1="24" x2="195" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#79F7FF"/><stop offset=".34" stop-color="#14D8F1"/><stop offset=".72" stop-color="#0876FF"/><stop offset="1" stop-color="#1944D8"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="91" y1="77" x2="157" y2="166" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF0A4"/><stop offset=".45" stop-color="#FFD45A"/><stop offset="1" stop-color="#E79B13"/>
+    </linearGradient>
+    <radialGradient id="shine" cx="0" cy="0" r="1" gradientTransform="translate(86 72) rotate(42) scale(84 72)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="#fff" stop-opacity=".28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="10" result="b"/><feColorMatrix in="b" values="0 0 0 0 0.04 0 0 0 0 0.78 0 0 0 0 1 0 0 0 1 0"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="goldGlow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <ellipse cx="120" cy="207" rx="58" ry="15" fill="#10CCFF" opacity=".18" filter="url(#glow)"/>
+  <path d="M120 18C99 52 52 102 52 148c0 41 30 73 68 73s68-32 68-73c0-46-47-96-68-130Z" fill="url(#drop)" stroke="#98F8FF" stroke-opacity=".78" stroke-width="2.5" filter="url(#glow)"/>
+  <path d="M120 32C103 59 66 105 66 146c0 32 24 58 54 58 23 0 43-15 51-37-12 11-29 18-48 18-37 0-61-27-57-61 5-37 35-70 54-92Z" fill="#041B35" opacity=".17"/>
+  <path d="M63 117c8-29 35-67 57-93 9 12 21 28 32 45-33-17-65 5-89 48Z" fill="url(#shine)" opacity=".68"/>
+  <path d="M91 159 120 82l29 77h-16l-5-15h-25l-5 15H91Zm17-29h15l-7-24-8 24Z" fill="url(#gold)" filter="url(#goldGlow)"/>
+  <path d="M83 171c25 15 51 15 75 0" fill="none" stroke="#B7F8FF" stroke-width="5" stroke-linecap="round" opacity=".9"/>
+  <circle cx="80" cy="90" r="5" fill="#fff" opacity=".9"/>
+</svg>
