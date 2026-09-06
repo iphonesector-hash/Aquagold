@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "ignoreCommand": "if [ \"$VERCEL_PROJECT_PRODUCTION_URL\" = \"aquagold-db.vercel.app\" ]; then exit 0; else exit 1; fi",
   "functions": {
     "app.py": {
       "maxDuration": 60,
