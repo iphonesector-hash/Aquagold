@@ -42,3 +42,29 @@ def _settings_with_single_history_fallback():
 
 MODULE._settings = _settings_with_single_history_fallback
 app = MODULE.app
+
+# Temporary non-sensitive preview diagnostic. Removed after verification.
+@app.get("/__aqua_bale_data_probe")
+def _aqua_bale_data_probe():
+    today = MODULE._tehran_today()
+    start_today, end_today = MODULE._day_bounds(today)
+    start_prev, _ = MODULE._day_bounds(today - MODULE.timedelta(days=1))
+    with MODULE.get_db() as db, db.cursor() as cur:
+        cur.execute("select count(*)::int n from customers_v2 where not archived")
+        customers = cur.fetchone()["n"]
+        cur.execute("select count(*)::int n from service_visits")
+        visits = cur.fetchone()["n"]
+        cur.execute("select count(*)::int n from service_visits where coalesce(visited_at,created_at)>=%s and coalesce(visited_at,created_at)<%s", (start_today, end_today))
+        today_visits = cur.fetchone()["n"]
+        cur.execute("select count(*)::int n from service_visits where coalesce(visited_at,created_at)>=%s and coalesce(visited_at,created_at)<%s", (start_prev, start_today))
+        previous_day_visits = cur.fetchone()["n"]
+        cur.execute("select max(coalesce(visited_at,created_at)) latest from service_visits")
+        latest = cur.fetchone()["latest"]
+    return MODULE.jsonify({
+        "connected": True,
+        "has_customers": customers > 0,
+        "has_service_history": visits > 0,
+        "today_has_services": today_visits > 0,
+        "previous_day_has_services": previous_day_visits > 0,
+        "latest_service_at": latest.isoformat() if latest else None,
+    })
