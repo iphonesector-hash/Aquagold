@@ -37,7 +37,7 @@ def finalize_aqua_round8_field_runtime(response):
         if FINAL_JS + "?" not in body:
             body = body.replace(
                 "</body>",
-                f'<script src="{FINAL_JS}?v=20260906-2"></script></body>',
+                f'<script src="{FINAL_JS}?v=20260906-3"></script></body>',
                 1,
             )
 
