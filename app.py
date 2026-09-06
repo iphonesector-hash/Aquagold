@@ -74,3 +74,21 @@ def send_bale_miniapp_button():
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
+
+
+@app.get("/diag/bot-identity-9f7c2d41")
+def _diag_bot_identity_once():
+    settings = MODULE._settings()
+    token = settings.get("bot_token") or ""
+    if not token:
+        return jsonify({"ok": False, "error": "no_token"}), 404
+    data = MODULE._bale_call(token, "getMe")
+    result = data.get("result") if isinstance(data, dict) else None
+    if not isinstance(result, dict):
+        return jsonify({"ok": False}), 502
+    return jsonify({
+        "ok": True,
+        "id": result.get("id"),
+        "first_name": result.get("first_name"),
+        "username": result.get("username"),
+    })
