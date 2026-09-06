@@ -15,6 +15,8 @@ import app_v3
 import bale_bridge
 
 
+BALE_MINIAPP_DIRECT_URL = "https://ble.ir/aqua_goldbot?startapp"
+AQUA_LAUNCHER_TEXT = "لطفاً برای ورود به مینی‌اپ آکوا، دکمه زیر را بزنید 👇"
 AQUAGOLD_OUTBOUND_PREFIXES = (
     "❌ لغو کار AquaGold",
     "📊 گزارش پایان کار",
@@ -24,11 +26,39 @@ AQUAGOLD_OUTBOUND_PREFIXES = (
     "✅ کار انجام شد و در AquaGold ثبت شد",
     "✅ کار از طریق ثبت هوشمند AquaGold",
     "❌ کار کنسل شد. علت:",
+    AQUA_LAUNCHER_TEXT,
 )
 
 
 def _flat(value):
     return re.sub(r"\s+", " ", str(value or "").replace("\u200c", " ")).strip()
+
+
+def _is_aqua_command(text):
+    value = _flat(text)
+    if not value:
+        return False
+    command = value.split()[0].lower().split("@", 1)[0]
+    return command == "/aqua"
+
+
+def _send_aqua_launcher(settings, chat_id, reply_to_message_id=None):
+    token = settings.get("bot_token") or ""
+    if not token:
+        return False
+    payload = {
+        "chat_id": chat_id,
+        "text": AQUA_LAUNCHER_TEXT,
+        "reply_markup": {
+            "inline_keyboard": [[
+                {"text": "💧 باز کردن AquaGold", "url": BALE_MINIAPP_DIRECT_URL}
+            ]]
+        },
+    }
+    if reply_to_message_id is not None:
+        payload["reply_to_message_id"] = reply_to_message_id
+    result = bale_bridge._bale_call(token, "sendMessage", payload, timeout=8)
+    return bool(result.get("ok", True)) if isinstance(result, dict) else True
 
 
 def is_aquagold_outbound(text, sender=None):
@@ -83,9 +113,26 @@ def _webhook_guard(secret):
     if not expected or not hmac.compare_digest(str(secret), expected):
         return _original_webhook(secret)
     update = request.get_json(silent=True) or {}
-    message, text, _chat, sender, _sender_name = bale_bridge._message_payload(update)
+    message, text, chat, sender, _sender_name = bale_bridge._message_payload(update)
     if message and text and is_aquagold_outbound(text, sender):
         return jsonify({"ok": True, "ignored": "aquagold_outbound"})
+    if message and text and _is_aqua_command(text):
+        chat_id = chat.get("id")
+        chat_type = str(chat.get("type") or "").lower()
+        message_id = message.get("message_id")
+        if chat_id is None:
+            return jsonify({"ok": True, "ignored": "aqua_no_chat"})
+        if chat_type and chat_type not in {"group", "supergroup"}:
+            return jsonify({"ok": True, "ignored": "aqua_group_only"})
+        allowed = {str(x) for x in (settings.get("allowed_chat_ids") or []) if str(x)}
+        if allowed and str(chat_id) not in allowed:
+            return jsonify({"ok": True, "ignored": "chat_not_allowed"})
+        try:
+            sent = _send_aqua_launcher(settings, chat_id, message_id)
+        except Exception as exc:
+            app_v3.logger.warning("bale_aqua_launcher_failed chat=%s: %s", chat_id, exc)
+            sent = False
+        return jsonify({"ok": True, "aqua_launcher": True, "sent": sent})
     return _original_webhook(secret)
 
 
