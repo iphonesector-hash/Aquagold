@@ -69,8 +69,10 @@ import aqua_targeted_modal_fix  # noqa: E402,F401
 import aqua_round3_backend_fix  # noqa: E402,F401
 # QA B1/B2/B3: Aria session-safe chat, payment-method unlabeled totals, service-backed invoices.
 import aqua_qa_backend_fix  # noqa: E402,F401
-# Round 7 must load last so its voice/news/loader/UI guards own the final preview runtime.
+# Round 7 owns the latest voice/news/loader/UI fixes.
 import aqua_round7_fix  # noqa: E402,F401
+# Preserve explicit Groq settings while still allowing fresh-isolate secret recovery.
+import aqua_round7_settings_guard  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
