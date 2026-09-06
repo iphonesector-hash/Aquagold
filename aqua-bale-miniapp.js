@@ -1,44 +1,144 @@
 (()=>{'use strict';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
-const state={view:'today',date:'',period:'daily',sound:localStorage.getItem('aquaMiniSound')!=='0',audio:null,searchTimer:null};
+const state={view:'today',date:'',period:'daily',sound:localStorage.getItem('aquaMiniSound')!=='0',audio:null,audioUnlocked:false,searchTimer:null};
 const fmtMoney=new Intl.NumberFormat('fa-IR');
-function toast(msg){const el=$('#toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove('show'),2400)}
+const icon=(name,cls='')=>`<svg class="ui-icon ${cls}"><use href="/assets/aqua-icons.svg#${name}"></use></svg>`;
+function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
+function toast(msg,kind=''){const el=$('#toast');el.textContent=msg;el.className=`toast show ${kind}`;clearTimeout(el._t);el._t=setTimeout(()=>el.className='toast',2600)}
 function fa(v){return new Intl.NumberFormat('fa-IR').format(Number(v||0))}
 function money(v){return `${fmtMoney.format(Number(v||0))} تومان`}
 function todayISO(){const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const o=Object.fromEntries(p.map(x=>[x.type,x.value]));return `${o.year}-${o.month}-${o.day}`}
 function shiftDate(iso,n){const d=new Date(`${iso}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)}
 function pDate(iso,long=true){const d=new Date(`${iso}T12:00:00Z`);return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',weekday:long?'long':undefined,year:'numeric',month:long?'long':'numeric',day:'numeric'}).format(d)}
-function pDateTime(iso){if(!iso)return '—';const d=new Date(iso);return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(d)}
+function pDateTime(iso){if(!iso)return '—';return new Intl.DateTimeFormat('fa-IR-u-ca-persian',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
 function clock(iso){if(!iso)return '—';return new Intl.DateTimeFormat('fa-IR',{timeZone:'Asia/Tehran',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
-function shortDate(iso){return pDate(iso,false)}
 async function api(path,opts={}){const r=await fetch(path,{credentials:'include',headers:{'Content-Type':'application/json',...(opts.headers||{})},...opts});let data={};try{data=await r.json()}catch{}if(!r.ok){if(r.status===401&&path!='/api/mini/login')showLogin();throw new Error(data.error||'خطا در ارتباط با سرور')}return data}
-function beep(kind='tap'){if(!state.sound)return;try{const C=window.AudioContext||window.webkitAudioContext;if(!C)return;if(!state.audio)state.audio=new C();const ctx=state.audio;if(ctx.state==='suspended')ctx.resume();const o=ctx.createOscillator(),g=ctx.createGain();const now=ctx.currentTime;const map={tap:[520,.032,.035],nav:[680,.045,.045],open:[760,.08,.05],success:[920,.12,.07],error:[220,.14,.07]};const [hz,dur,vol]=map[kind]||map.tap;o.type=kind==='error'?'sawtooth':'sine';o.frequency.setValueAtTime(hz,now);if(kind==='success')o.frequency.exponentialRampToValueAtTime(1320,now+dur);g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(vol,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+dur);o.connect(g).connect(ctx.destination);o.start(now);o.stop(now+dur+.02)}catch{}}
-function haptic(){try{navigator.vibrate?.(10)}catch{}}
-function interactive(kind='tap'){beep(kind);haptic()}
-function setSound(){state.sound=!state.sound;localStorage.setItem('aquaMiniSound',state.sound?'1':'0');$('#soundBtn').textContent=state.sound?'🔊':'🔇';interactive('nav');toast(state.sound?'افکت صوتی روشن شد':'افکت صوتی خاموش شد')}
+
+async function ensureAudio(){
+  if(!state.sound)return null;
+  try{
+    const C=window.AudioContext||window.webkitAudioContext;if(!C)return null;
+    if(!state.audio||state.audio.state==='closed')state.audio=new C();
+    if(state.audio.state==='suspended')await state.audio.resume();
+    if(!state.audioUnlocked){
+      const ctx=state.audio,b=ctx.createBuffer(1,1,22050),src=ctx.createBufferSource(),g=ctx.createGain();g.gain.value=.00001;src.buffer=b;src.connect(g).connect(ctx.destination);src.start(0);state.audioUnlocked=true;
+    }
+    return state.audio;
+  }catch{return null}
+}
+async function beep(kind='tap'){
+  if(!state.sound)return;
+  const ctx=await ensureAudio();if(!ctx)return;
+  try{
+    const map={tap:[530,.035,.035],nav:[690,.055,.045],open:[790,.075,.05],success:[920,.13,.07],error:[210,.15,.06]};
+    const [hz,dur,vol]=map[kind]||map.tap,now=ctx.currentTime,o=ctx.createOscillator(),g=ctx.createGain();
+    o.type=kind==='error'?'triangle':'sine';o.frequency.setValueAtTime(hz,now);if(kind==='success')o.frequency.exponentialRampToValueAtTime(1380,now+dur);
+    g.gain.setValueAtTime(.0001,now);g.gain.exponentialRampToValueAtTime(vol,now+.008);g.gain.exponentialRampToValueAtTime(.0001,now+dur);o.connect(g).connect(ctx.destination);o.start(now);o.stop(now+dur+.02);
+  }catch{}
+}
+function haptic(){try{navigator.vibrate?.(9)}catch{}}
+function interactive(kind='tap'){void beep(kind);haptic()}
+async function unlockFromGesture(){if(state.sound)await ensureAudio()}
+function updateSoundUI(){const b=$('#soundBtn');if(!b)return;b.classList.toggle('muted',!state.sound);b.classList.toggle('audio-ready',state.sound&&state.audioUnlocked);const dot=b.querySelector('.sound-state');if(dot)dot.title=state.sound?'روشن':'خاموش'}
+async function setSound(){state.sound=!state.sound;localStorage.setItem('aquaMiniSound',state.sound?'1':'0');if(state.sound){await ensureAudio();await beep('success')}else if(state.audio?.state==='running'){try{await state.audio.suspend()}catch{}}updateSoundUI();haptic();toast(state.sound?'افکت صوتی روشن شد':'افکت صوتی خاموش شد')}
+
 function showLogin(){$('#root').classList.add('hidden');$('#login').classList.remove('hidden');setTimeout(()=>$('#password')?.focus(),120)}
-function showApp(){$('#login').classList.add('hidden');$('#root').classList.remove('hidden');navigate('today')}
-function hideSplash(){const s=$('#splash');s.classList.add('out');setTimeout(()=>s.classList.add('hidden'),460)}
-function statusTimeline(job){const st=job.status;const waitClass=st==='new'?'active':st!=='new'?'done':'';const regClass=st==='review'?'active':(['completed','cancelled'].includes(st)?'done':'');const finalClass=st==='completed'?'done active':st==='cancelled'?'cancel active':'';const seg1=st==='new'?'flow':'filled';const seg2=st==='review'?'flow':(['completed','cancelled'].includes(st)?'filled':'');const finalLabel=st==='cancelled'?'کنسل شده':'انجام شده';return `<div class="timeline"><div class="stage ${waitClass}"><div class="stage-dot"></div><div class="stage-label">در صف انتظار</div></div><div class="segment ${seg1}"></div><div class="stage ${regClass}"><div class="stage-dot"></div><div class="stage-label">ثبت شده</div></div><div class="segment ${seg2}"></div><div class="stage ${finalClass}"><div class="stage-dot"></div><div class="stage-label">${finalLabel}</div></div></div>`}
-function jobCard(j){const cls=j.status==='completed'?'completed':j.status==='cancelled'?'cancelled':'';const result=j.status==='completed'?`<div class="job-result money">✓ دریافتی: ${money(j.received_amount)}</div>`:j.status==='cancelled'?`<div class="job-result reason">✕ علت کنسلی: ${escapeHtml(j.cancel_reason||'ثبت نشده')}</div>`:'';return `<article class="job-card ${cls}"><div class="job-top"><div class="job-avatar">♟</div><div class="job-main"><div class="job-name">${escapeHtml(j.customer_name||'مشتری بدون نام')}</div><div class="job-type">${escapeHtml(j.job_type||'سرویس')}</div><div class="job-address">${escapeHtml(j.address||j.phone||'بدون آدرس')}</div></div><div class="job-time">${clock(j.received_at)}</div></div>${statusTimeline(j)}${result}</article>`}
-function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[m]))}
-async function loadDay(){const list=$('#jobsList');list.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';$('#dayTitle').textContent=state.date===todayISO()?'امروز':'گزارش روز';$('#dayDate').textContent=pDate(state.date,true);try{const d=await api(`/api/mini/day?date=${encodeURIComponent(state.date)}`);list.innerHTML=d.jobs.length?d.jobs.map(jobCard).join(''):'<div class="empty">برای این روز کاری از بله ثبت نشده است.</div>';const s=d.summary;$('#daySummary').innerHTML=`<div class="summary-card green"><div class="k">کارهای انجام شده</div><div class="v">${fa(s.completed)}</div></div><div class="summary-card red"><div class="k">کنسل شده</div><div class="v">${fa(s.cancelled)}</div></div><div class="summary-card cyan"><div class="k">دریافتی</div><div class="v">${money(s.received)}</div></div><div class="summary-card purple"><div class="k">سهم شرکت</div><div class="v">${money(s.company_share)}</div></div>`}catch(e){list.innerHTML=`<div class="empty">${escapeHtml(e.message)}</div>`}}
-function navigate(view){state.view=view;$$('.view').forEach(v=>v.classList.add('hidden'));$(`#${view}View`)?.classList.remove('hidden');$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));interactive('nav');if(view==='today')loadDay();if(view==='finance')loadFinance();if(view==='customers')setTimeout(()=>$('#customerSearch')?.focus(),160)}
-function customerCard(c){const phones=(c.phones||[]).join(' • ')||'بدون شماره';const name=[c.first_name,c.last_name].filter(Boolean).join(' ')||'بدون نام';return `<article class="customer-card" data-customer="${c.id}"><div class="customer-header"><div class="customer-avatar">♟</div><div><div class="customer-name">${escapeHtml(name)}</div><div style="font-size:11px;color:#8ba8c0;margin-top:3px">${escapeHtml(phones)}</div></div><span class="badge">مشتری فعال</span></div><div class="customer-lines"><div>⌖ ${escapeHtml(c.address||'آدرس ثبت نشده')}${c.plaque?`، پلاک ${escapeHtml(c.plaque)}`:''}${c.unit_no?`، واحد ${escapeHtml(c.unit_no)}`:''}</div><div>◷ اولین ثبت: ${pDateTime(c.created_at)}</div><div>◉ آخرین سرویس: ${pDateTime(c.last_service_at)}</div></div><div class="customer-stats"><div class="customer-stat">کل خدمات<b>${fa(c.total_services)} مورد</b></div><div class="customer-stat">انجام شده<b style="color:#4ceeb1">${fa(c.completed_services)} مورد</b></div><div class="customer-stat">کنسل شده<b style="color:#ff7788">${fa(c.cancelled_services)} مورد</b></div><div class="customer-stat">مجموع دریافتی<b style="color:#58dbff">${money(c.total_received)}</b></div></div></article>`}
-async function searchCustomers(){const q=$('#customerSearch').value.trim();const box=$('#customerResults');if(q.length<2){box.innerHTML='<div class="empty">حداقل دو حرف از نام، شماره یا آدرس را بنویس.</div>';return}$('#searchBusy').textContent='…';try{const rows=await api(`/api/mini/customers?q=${encodeURIComponent(q)}`);box.innerHTML=rows.length?rows.map(customerCard).join(''):'<div class="empty">مشتری پیدا نشد.</div>'}catch(e){box.innerHTML=`<div class="empty">${escapeHtml(e.message)}</div>`}finally{$('#searchBusy').textContent=''}}
-function historyItem(x){const isCancel=x.status==='cancelled';const when=x.visited_at||x.completed_at||x.cancelled_at||x.created_at||x.received_at;const title=x.service_type||x.job_type||'سرویس';const side=isCancel?`<span style="color:#ff7788">${escapeHtml(x.cancel_reason||'کنسل شده')}</span>`:`<span class="money">${money(x.received_amount)}</span>`;return `<div class="history-item ${isCancel?'cancel':''}"><span class="history-dot"></span><div><b>${escapeHtml(title)}</b><div class="date">${pDateTime(when)} • ${isCancel?'کنسل شده':x.status==='completed'?'انجام شده':'ثبت شده'}</div>${x.description?`<div style="font-size:10px;color:#86a3bb;margin-top:4px">${escapeHtml(x.description)}</div>`:''}</div>${side}</div>`}
-async function openCustomer(id){interactive('open');const box=$('#customerResults');box.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';try{const d=await api(`/api/mini/customers/${encodeURIComponent(id)}`);const c=d.customer,name=[c.first_name,c.last_name].filter(Boolean).join(' ')||'بدون نام';const all=[...(d.visits||[]),...(d.bale_jobs||[])].sort((a,b)=>new Date(b.visited_at||b.completed_at||b.cancelled_at||b.created_at||b.received_at)-new Date(a.visited_at||a.completed_at||a.cancelled_at||a.created_at||a.received_at));box.innerHTML=`<button id="backSearch" class="icon-btn" style="margin-bottom:10px">→</button><article class="customer-card"><div class="customer-header"><div class="customer-avatar">♟</div><div><div class="customer-name">${escapeHtml(name)}</div><div style="font-size:11px;color:#8ba8c0">${escapeHtml((c.phones||[]).join(' • '))}</div></div></div><div class="customer-lines"><div>⌖ ${escapeHtml(c.address||'آدرس ثبت نشده')}</div><div>▣ پلاک: ${escapeHtml(c.plaque||'—')} • واحد: ${escapeHtml(c.unit_no||'—')}</div><div>◷ تاریخ ثبت: ${pDateTime(c.created_at)}</div>${c.device_model?`<div>⚙ مدل دستگاه: ${escapeHtml(c.device_model)}</div>`:''}${c.notes?`<div>✎ ${escapeHtml(c.notes)}</div>`:''}</div><div class="history"><div class="section-title">تاریخچه خدمات</div>${all.length?all.map(historyItem).join(''):'<div class="empty">هنوز سابقه‌ای ثبت نشده است.</div>'}</div></article>`;$('#backSearch').onclick=()=>{interactive('nav');searchCustomers()}}catch(e){box.innerHTML=`<div class="empty">${escapeHtml(e.message)}</div>`}}
+function showApp(){$('#login').classList.add('hidden');$('#root').classList.remove('hidden');navigate('today',false)}
+function hideSplash(){const s=$('#splash');s.classList.add('out');setTimeout(()=>s.classList.add('hidden'),520)}
+
+function statusTimeline(job){
+  const st=job.status;
+  const waitClass=st==='new'?'active':st!=='new'?'done':'';
+  const regClass=st==='review'?'active':(['completed','cancelled'].includes(st)?'done':'');
+  const finalClass=st==='completed'?'done active':st==='cancelled'?'cancel active':'';
+  const seg1=st==='new'?'flow':'filled',seg2=st==='review'?'flow':(['completed','cancelled'].includes(st)?'filled':'');
+  const finalLabel=st==='cancelled'?'کنسل شده':'انجام شده';
+  return `<div class="timeline"><div class="stage ${waitClass}"><div class="stage-dot"></div><div class="stage-label">در صف انتظار</div></div><div class="segment ${seg1}"></div><div class="stage ${regClass}"><div class="stage-dot"></div><div class="stage-label">ثبت شده</div></div><div class="segment ${seg2}"></div><div class="stage ${finalClass}"><div class="stage-dot"></div><div class="stage-label">${finalLabel}</div></div></div>`
+}
+function jobCard(j){
+  const cls=j.status==='completed'?'completed':j.status==='cancelled'?'cancelled':'';
+  const result=j.status==='completed'?`<div class="job-result money">${icon('i-finance')}<span>دریافتی: <b>${money(j.received_amount)}</b></span></div>`:j.status==='cancelled'?`<div class="job-result reason">${icon('i-reminders')}<span>علت کنسلی: <b>${escapeHtml(j.cancel_reason||'ثبت نشده')}</b></span></div>`:'';
+  return `<article class="job-card ${cls}"><div class="card-shine"></div><div class="job-top"><div class="job-avatar">${icon('i-customers')}</div><div class="job-main"><div class="job-name">${escapeHtml(j.customer_name||'مشتری بدون نام')}</div><div class="job-type">${escapeHtml(j.job_type||'سرویس')}</div><div class="job-address">${icon('i-map')}${escapeHtml(j.address||j.phone||'بدون آدرس')}</div></div><div class="job-time">${clock(j.received_at)}</div></div>${statusTimeline(j)}${result}</article>`
+}
+async function loadDay(){
+  const list=$('#jobsList');list.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';
+  $('#dayTitle').textContent=state.date===todayISO()?'امروز':'گزارش روز';$('#dayDate').textContent=pDate(state.date,true);
+  try{
+    const d=await api(`/api/mini/day?date=${encodeURIComponent(state.date)}`);
+    list.innerHTML=d.jobs.length?d.jobs.map(jobCard).join(''):'<div class="empty">برای این روز سرویس نهایی یا کنسلی ثبت نشده است.</div>';
+    const s=d.summary;
+    $('#daySummary').innerHTML=`<div class="summary-card green">${icon('i-services')}<div><span>انجام شده</span><b>${fa(s.completed)}</b></div></div><div class="summary-card red">${icon('i-reminders')}<div><span>کنسل شده</span><b>${fa(s.cancelled)}</b></div></div><div class="summary-card cyan">${icon('i-finance')}<div><span>دریافتی</span><b>${money(s.received)}</b></div></div><div class="summary-card gold">${icon('i-insights')}<div><span>سهم شرکت</span><b>${money(s.company_share)}</b></div></div>`;
+  }catch(e){list.innerHTML=`<div class="empty error">${escapeHtml(e.message)}</div>`}
+}
+function navigate(view,sound=true){
+  state.view=view;$$('.view').forEach(v=>v.classList.add('hidden'));$(`#${view}View`)?.classList.remove('hidden');$$('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));if(sound)interactive('nav');if(view==='today')loadDay();if(view==='finance')loadFinance();if(view==='customers')setTimeout(()=>$('#customerSearch')?.focus(),120)
+}
+
+function customerCard(c){
+  const phones=(c.phones||[]).join(' • ')||'بدون شماره',name=[c.first_name,c.last_name].filter(Boolean).join(' ')||'بدون نام';
+  return `<article class="customer-card" data-customer="${c.id}"><div class="card-shine"></div><div class="customer-header"><div class="customer-avatar">${icon('i-customers')}</div><div class="customer-id"><div class="customer-name">${escapeHtml(name)}</div><small>${escapeHtml(phones)}</small></div><span class="badge">مشتری فعال</span></div><div class="customer-lines"><div>${icon('i-map')}<span>${escapeHtml(c.address||'آدرس ثبت نشده')}${c.plaque?`، پلاک ${escapeHtml(c.plaque)}`:''}${c.unit_no?`، واحد ${escapeHtml(c.unit_no)}`:''}</span></div><div>${icon('i-daily')}<span>اولین ثبت: ${pDateTime(c.created_at)}</span></div><div>${icon('i-services')}<span>آخرین سرویس: ${pDateTime(c.last_service_at)}</span></div></div><div class="customer-stats"><div class="customer-stat"><span>کل خدمات</span><b>${fa(c.total_services)} مورد</b></div><div class="customer-stat ok"><span>انجام شده</span><b>${fa(c.completed_services)} مورد</b></div><div class="customer-stat bad"><span>کنسل شده</span><b>${fa(c.cancelled_services)} مورد</b></div><div class="customer-stat cyan"><span>مجموع دریافتی</span><b>${money(c.total_received)}</b></div></div></article>`
+}
+async function searchCustomers(){
+  const q=$('#customerSearch').value.trim(),box=$('#customerResults');if(q.length<2){box.innerHTML='<div class="empty">حداقل دو حرف از نام، شماره یا آدرس را بنویس.</div>';return}
+  $('#searchBusy').textContent='…';try{const rows=await api(`/api/mini/customers?q=${encodeURIComponent(q)}`);box.innerHTML=rows.length?rows.map(customerCard).join(''):'<div class="empty">مشتری پیدا نشد.</div>'}catch(e){box.innerHTML=`<div class="empty error">${escapeHtml(e.message)}</div>`}finally{$('#searchBusy').textContent=''}
+}
+function historyItem(x){
+  const isCancel=x.status==='cancelled',when=x.visited_at||x.completed_at||x.cancelled_at||x.created_at||x.received_at,title=x.service_type||x.job_type||'سرویس';
+  const side=isCancel?`<span class="history-side bad">${escapeHtml(x.cancel_reason||'کنسل شده')}</span>`:`<span class="history-side money">${money(x.received_amount)}</span>`;
+  return `<div class="history-item ${isCancel?'cancel':''}"><span class="history-dot"></span><div class="history-copy"><b>${escapeHtml(title)}</b><div class="date">${pDateTime(when)} • ${isCancel?'کنسل شده':'انجام شده'}</div>${x.description?`<small>${escapeHtml(x.description)}</small>`:''}</div>${side}</div>`
+}
+async function openCustomer(id){
+  interactive('open');const box=$('#customerResults');box.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';
+  try{
+    const d=await api(`/api/mini/customers/${encodeURIComponent(id)}`),c=d.customer,name=[c.first_name,c.last_name].filter(Boolean).join(' ')||'بدون نام';
+    const all=[...(d.visits||[]),...(d.bale_jobs||[])].sort((a,b)=>new Date(b.visited_at||b.completed_at||b.cancelled_at||b.created_at||b.received_at)-new Date(a.visited_at||a.completed_at||a.cancelled_at||a.created_at||a.received_at));
+    box.innerHTML=`<button id="backSearch" class="back-btn">${icon('i-route')}<span>بازگشت به جستجو</span></button><article class="customer-card detail"><div class="customer-header"><div class="customer-avatar">${icon('i-customers')}</div><div class="customer-id"><div class="customer-name">${escapeHtml(name)}</div><small>${escapeHtml((c.phones||[]).join(' • '))}</small></div></div><div class="customer-lines"><div>${icon('i-map')}<span>${escapeHtml(c.address||'آدرس ثبت نشده')}</span></div><div>${icon('i-daily')}<span>پلاک: ${escapeHtml(c.plaque||'—')} • واحد: ${escapeHtml(c.unit_no||'—')}</span></div>${c.device_model?`<div>${icon('i-services')}<span>مدل دستگاه: ${escapeHtml(c.device_model)}</span></div>`:''}${c.notes?`<div>${icon('i-more')}<span>${escapeHtml(c.notes)}</span></div>`:''}</div><div class="history"><div class="section-title"><span>تاریخچه خدمات</span><i></i></div>${all.length?all.map(historyItem).join(''):'<div class="empty">هنوز سابقه‌ای ثبت نشده است.</div>'}</div></article>`;
+    $('#backSearch').onclick=()=>{interactive('nav');searchCustomers()};
+  }catch(e){box.innerHTML=`<div class="empty error">${escapeHtml(e.message)}</div>`}
+}
+
 function periodFa(p){return p==='daily'?'روزانه':p==='weekly'?'هفتگی':'ماهانه'}
-async function loadFinance(){const cards=$('#financeCards');cards.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';try{const d=await api(`/api/mini/finance?period=${state.period}&date=${state.date}`),s=d.summary;cards.innerHTML=`<div class="finance-card green"><div class="icon">▣</div><div class="label">دریافتی</div><div class="amount">${money(s.received_total)}</div></div><div class="finance-card blue"><div class="icon">◔</div><div class="label">سهم شرکت</div><div class="amount">${money(s.company_share)}</div></div><div class="finance-card purple"><div class="icon">▥</div><div class="label">جمع کل</div><div class="amount">${money(s.invoice_total)}</div></div><div class="finance-card gold"><div class="icon">◆</div><div class="label">تسویه با شرکت</div><div class="amount">${money(s.settled_total)}</div></div>`;$('#financeDetails').innerHTML=`<div class="detail-row"><span>بازه گزارش</span><b>${pDate(d.from,false)} تا ${pDate(d.to,false)}</b></div><div class="detail-row"><span>تعداد خدمات انجام‌شده</span><b>${fa(s.service_count)} مورد</b></div><div class="detail-row"><span>مجموع دریافتی</span><b>${money(s.received_total)}</b></div><div class="detail-row"><span>سهم شرکت</span><b>${money(s.company_share)}</b></div><div class="detail-row"><span>تسویه انجام‌شده</span><b>${money(s.settled_total)}</b></div><div class="detail-row"><span>مانده قابل تسویه</span><b style="color:#ffc65c">${money(s.payable)}</b></div>`;renderChart(d.chart||[]);$('#chartSubtitle').textContent=`${periodFa(state.period)} • ${fa(s.service_count)} سرویس • ${money(s.received_total)}`;$$('#financeTabs button').forEach(b=>b.classList.toggle('active',b.dataset.period===state.period))}catch(e){cards.innerHTML=`<div class="empty" style="grid-column:1/-1">${escapeHtml(e.message)}</div>`}}
-function renderChart(points){const box=$('#barChart');if(!points.length){box.innerHTML='<div class="empty" style="width:100%">داده‌ای برای نمودار این بازه وجود ندارد.</div>';return}const max=Math.max(...points.map(p=>Number(p.received||0)),1);box.innerHTML=points.map(p=>{const h=Math.max(8,Math.round(Number(p.received||0)/max*145));return `<div class="bar-item"><div class="bar-value">${fmtCompact(p.received)}</div><div class="bar" style="height:${h}px"></div><div class="bar-label">${shortDate(p.day)}</div></div>`}).join('')}
-function fmtCompact(v){const n=Number(v||0);if(n>=1e6)return `${(n/1e6).toLocaleString('fa-IR',{maximumFractionDigits:1})}م`;if(n>=1e3)return `${Math.round(n/1e3).toLocaleString('fa-IR')}ه`;return fa(n)}
-function toggleChart(){const a=$('#chartAccordion');a.classList.toggle('open');interactive(a.classList.contains('open')?'open':'tap')}
-async function boot(){state.date=todayISO();$('#soundBtn').textContent=state.sound?'🔊':'🔇';try{window.Bale?.WebApp?.ready?.();window.Bale?.WebApp?.expand?.()}catch{}const min=new Promise(r=>setTimeout(r,1500));let session={authenticated:false};try{session=await api('/api/mini/session')}catch{}await min;hideSplash();session.authenticated?showApp():showLogin()}
-$('#loginForm').addEventListener('submit',async e=>{e.preventDefault();interactive('tap');$('#loginError').textContent='';const btn=e.currentTarget.querySelector('button');btn.disabled=true;btn.textContent='در حال ورود...';try{await api('/api/mini/login',{method:'POST',body:JSON.stringify({username:$('#username').value,password:$('#password').value})});beep('success');showApp()}catch(err){beep('error');$('#loginError').textContent=err.message}finally{btn.disabled=false;btn.textContent='ورود به مینی‌اپ'}});
-$('#logoutBtn').onclick=async()=>{interactive('tap');try{await api('/api/mini/logout',{method:'POST',body:'{}'})}catch{}$('#password').value='';showLogin()};$('#soundBtn').onclick=setSound;
-$$('.nav-btn').forEach(b=>b.addEventListener('click',()=>navigate(b.dataset.view)));
-$('#prevDay').onclick=()=>{state.date=shiftDate(state.date,-1);interactive('nav');loadDay();if(state.view==='finance')loadFinance()};$('#nextDay').onclick=()=>{state.date=shiftDate(state.date,1);interactive('nav');loadDay();if(state.view==='finance')loadFinance()};
-$('#customerSearch').addEventListener('input',()=>{clearTimeout(state.searchTimer);state.searchTimer=setTimeout(searchCustomers,330)});$('#customerResults').addEventListener('click',e=>{const c=e.target.closest('[data-customer]');if(c)openCustomer(c.dataset.customer)});
-$('#financeTabs').addEventListener('click',e=>{const b=e.target.closest('[data-period]');if(!b)return;state.period=b.dataset.period;interactive('nav');loadFinance()});$('#chartToggle').onclick=toggleChart;
-document.addEventListener('pointerup',e=>{if(e.target.closest('button')&&!e.target.closest('#soundBtn'))haptic()},{passive:true});
-boot();})();
+async function loadFinance(){
+  const cards=$('#financeCards');cards.innerHTML='<div class="skeleton"></div><div class="skeleton"></div>';
+  try{
+    const d=await api(`/api/mini/finance?period=${state.period}&date=${state.date}`),s=d.summary;
+    cards.innerHTML=`<div class="finance-card green">${icon('i-finance')}<span>دریافتی</span><b>${money(s.received_total)}</b><i></i></div><div class="finance-card blue">${icon('i-insights')}<span>سهم شرکت</span><b>${money(s.company_share)}</b><i></i></div><div class="finance-card purple">${icon('i-invoices')}<span>جمع کل</span><b>${money(s.invoice_total)}</b><i></i></div><div class="finance-card gold">${icon('i-sync')}<span>تسویه با شرکت</span><b>${money(s.settled_total)}</b><i></i></div>`;
+    $('#financeDetails').innerHTML=`<div class="detail-row"><span>بازه گزارش</span><b>${pDate(d.from,false)} تا ${pDate(d.to,false)}</b></div><div class="detail-row"><span>تعداد خدمات انجام‌شده</span><b>${fa(s.service_count)} مورد</b></div><div class="detail-row"><span>مجموع دریافتی</span><b>${money(s.received_total)}</b></div><div class="detail-row"><span>سهم شرکت</span><b>${money(s.company_share)}</b></div><div class="detail-row"><span>تسویه انجام‌شده</span><b>${money(s.settled_total)}</b></div><div class="detail-row highlight"><span>مانده قابل تسویه</span><b>${money(s.payable)}</b></div>`;
+    renderChart(d.chart||[]);$('#chartSubtitle').textContent=`${periodFa(state.period)} • ${fa(s.service_count)} سرویس • ${money(s.received_total)}`;$$('#financeTabs button').forEach(b=>b.classList.toggle('active',b.dataset.period===state.period));
+  }catch(e){cards.innerHTML=`<div class="empty error wide">${escapeHtml(e.message)}</div>`;$('#financeDetails').innerHTML=''}
+}
+function renderChart(points){
+  const box=$('#barChart');if(!points.length){box.innerHTML='<div class="empty">برای این بازه داده‌ای وجود ندارد.</div>';return}
+  const max=Math.max(...points.map(x=>Number(x.received||0)),1);
+  box.innerHTML=points.map(x=>{const h=Math.max(8,Math.round(Number(x.received||0)/max*100));return `<div class="bar-col"><span class="bar-value">${fa(x.received)}</span><div class="bar-track"><i style="height:${h}%"></i></div><small>${pDate(x.day,false)}</small></div>`}).join('')
+}
+function toggleChart(){$('#chartAccordion').classList.toggle('open');interactive('open')}
+function toggleSettings(){$('.settings-block').classList.toggle('open');interactive('open')}
+async function changePassword(ev){
+  ev.preventDefault();interactive('tap');const out=$('#passwordMessage');out.textContent='در حال ذخیره...';out.className='form-message show';
+  try{
+    await api('/api/mini/password',{method:'POST',body:JSON.stringify({current_password:$('#currentPassword').value,new_password:$('#newPassword').value,confirm_password:$('#confirmPassword').value})});
+    $('#passwordForm').reset();out.textContent='رمز عبور با موفقیت تغییر کرد';out.className='form-message show success';await beep('success');toast('رمز جدید ذخیره شد','success');
+  }catch(e){out.textContent=e.message;out.className='form-message show error';await beep('error')}
+}
+
+function bind(){
+  $('#soundBtn').onclick=setSound;$('#logoutBtn').onclick=async()=>{interactive('tap');try{await api('/api/mini/logout',{method:'POST'});}finally{showLogin()}};
+  $$('.nav-btn').forEach(b=>b.onclick=()=>navigate(b.dataset.view));
+  $('#prevDay').onclick=()=>{state.date=shiftDate(state.date,-1);interactive('nav');loadDay();if(state.view==='finance')loadFinance()};
+  $('#nextDay').onclick=()=>{state.date=shiftDate(state.date,1);interactive('nav');loadDay();if(state.view==='finance')loadFinance()};
+  $('#customerSearch').addEventListener('input',()=>{clearTimeout(state.searchTimer);state.searchTimer=setTimeout(searchCustomers,260)});
+  $('#customerResults').addEventListener('click',e=>{const c=e.target.closest('[data-customer]');if(c)openCustomer(c.dataset.customer)});
+  $$('#financeTabs button').forEach(b=>b.onclick=()=>{state.period=b.dataset.period;interactive('nav');loadFinance()});
+  $('#chartToggle').onclick=toggleChart;$('#settingsToggle').onclick=toggleSettings;$('#passwordForm').onsubmit=changePassword;
+  $('#loginForm').onsubmit=async ev=>{ev.preventDefault();await unlockFromGesture();const err=$('#loginError');err.textContent='';try{await api('/api/mini/login',{method:'POST',body:JSON.stringify({username:'admin',password:$('#password').value})});$('#password').value='';await beep('success');showApp()}catch(e){err.textContent=e.message;await beep('error')}};
+  document.addEventListener('pointerdown',unlockFromGesture,{passive:true});document.addEventListener('touchend',unlockFromGesture,{passive:true});
+  window.addEventListener('pageshow',()=>{state.audioUnlocked=false;if(state.sound)void ensureAudio()});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.sound){state.audioUnlocked=false;void ensureAudio()}});
+}
+async function start(){
+  state.date=todayISO();bind();updateSoundUI();try{window.Bale?.WebApp?.ready?.();window.Bale?.WebApp?.expand?.()}catch{}
+  let session={authenticated:false};try{session=await api('/api/mini/session')}catch{}setTimeout(()=>{hideSplash();session.authenticated?showApp():showLogin()},760)
+}
+start();
+})();
