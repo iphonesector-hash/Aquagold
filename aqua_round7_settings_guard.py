@@ -14,6 +14,22 @@ import aqua_ai
 import aqua_round7_fix as round7
 
 
+_WEB_REQUEST_MARKERS = (
+    "بگرد", "سرچ", "جستجو", "جست‌وجو", "جست و جو", "در وب", "روی وب",
+    "اینترنت", "در اینترنت", "از اینترنت", "وب سرچ", "web search",
+)
+
+
+def _wants_live_web(text):
+    try:
+        if round7._needs_live_web_search(text):
+            return True
+    except Exception:
+        pass
+    value = re.sub(r"\s+", " ", str(text or "").replace("\u200c", " ").lower()).strip()
+    return any(marker in value for marker in _WEB_REQUEST_MARKERS)
+
+
 def _retry_after_seconds(error):
     text = str(error or "")
     match = re.search(r"try again in\s*([\d.]+)s", text, re.I)
@@ -97,7 +113,7 @@ def _groq_answer_with_explicit_settings(settings, text, history, context):
         merged.update({key: value for key, value in current.items() if value not in (None, "")})
         current = merged
 
-    if round7._needs_live_web_search(text):
+    if _wants_live_web(text):
         return _fast_live_answer(current, text)
 
     try:
