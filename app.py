@@ -29,6 +29,10 @@ def _row_json(row):
 app_v3.row_json = _row_json
 app = app_v3.app
 
+# Register this response normalizer before later UI injectors: Flask runs
+# after_request handlers in reverse order, so Round 8 finalizes the HTML last.
+import aqua_round8_field_fix  # noqa: E402,F401
+
 # Registers v3/v4/v6 extensions, Aqua AI, Bale intake and PostgreSQL compatibility fixes.
 import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
