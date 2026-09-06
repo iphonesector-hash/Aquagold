@@ -1,8 +1,9 @@
-"""Final field-runtime repair for AquaGold test preview.
+"""Final field-runtime repair for AquaGold.
 
-This module intentionally does NOT touch the boot/loading screen.
-It keeps the iPhone microphone runtime and gives the daily report its own
-native editor so the edit action no longer depends on layered Alpine shims.
+This module keeps the iPhone microphone runtime and daily native editor intact.
+It also carries two tightly-scoped post-merge fixes only:
+- keep a single service-type/payment-method control in Smart Register;
+- finalize a linked Bale job after Smart Register succeeds.
 """
 from __future__ import annotations
 
@@ -192,6 +193,77 @@ DAILY_EDIT_NATIVE = r'''
 '''
 
 
+SMART_BALE_TWO_ISSUE_FIX = r'''
+<script id="aqua-smart-bale-two-issue-fix-v1">
+(()=>{
+  if(window.__aquaSmartBaleTwoIssueFixV1)return;
+  window.__aquaSmartBaleTwoIssueFixV1=true;
+  const clean=value=>String(value??'').trim();
+
+  const dedupeSmartChoices=()=>{
+    const section=[...document.querySelectorAll('section')].find(el=>(el.getAttribute('x-show')||'').includes("page==='smart'"));
+    if(!section)return;
+    for(const model of ['smartParsed.service_type','smartParsed.payment_method']){
+      const controls=[...section.querySelectorAll(`[x-model="${model}"]`)];
+      if(controls.length<=1)continue;
+      const preferred=controls.find(control=>control.closest('#aqua-smart-choice-controls'))||controls[controls.length-1];
+      for(const control of controls){
+        if(control===preferred)continue;
+        const label=control.closest('label');
+        if(label&&label!==preferred.closest('label'))label.remove();
+        else control.remove();
+      }
+    }
+  };
+
+  dedupeSmartChoices();
+  document.addEventListener('alpine:init',()=>queueMicrotask(dedupeSmartChoices),{once:true});
+  [50,200,600].forEach(ms=>setTimeout(dedupeSmartChoices,ms));
+
+  const previous=window.app;
+  if(typeof previous!=='function')return;
+  window.app=function(){
+    const state=previous();
+    const oldRegisterSmart=state.registerSmart?.bind(state);
+    if(typeof oldRegisterSmart!=='function')return state;
+
+    state.registerSmart=async function(...args){
+      const pending=this.baleSmartJob?{...this.baleSmartJob}:null;
+      const result=await oldRegisterSmart(...args);
+      if(!pending)return result;
+
+      const finished=!this.smartParsed&&!clean(this.smartText);
+      if(!finished)return result;
+      const id=clean(pending.id);
+      if(!id)return result;
+
+      try{
+        await this.api('/bale/jobs/'+id+'/finalize',{method:'POST',body:'{}'});
+      }catch(error){
+        const message=clean(error?.message);
+        if(!/قبلاً تعیین تکلیف/.test(message)){
+          this.toast?.(message||'سرویس ثبت شد ولی بستن کار بله انجام نشد','error');
+          return result;
+        }
+      }
+
+      this.baleSmartJob=null;
+      this.baleJobs=(this.baleJobs||[]).filter(job=>String(job.id)!==id);
+      try{
+        const tab=String(this.baleTab||'new');
+        await Promise.all([this.loadBaleCounts?.(),this.loadBaleJobs?.(tab)]);
+      }catch{}
+      this.baleJobs=(this.baleJobs||[]).filter(job=>String(job.id)!==id);
+      return result;
+    };
+
+    return state;
+  };
+})();
+</script>
+'''
+
+
 @app_v3.app.get(FINAL_JS)
 def aqua_round8_mic_edit_only_js():
     return app_v3.send_from_directory(
@@ -211,8 +283,8 @@ def finalize_aqua_round8_field_runtime(response):
         response.direct_passthrough = False
         body = response.get_data(as_text=True)
 
-        # Leave the splash/loader exactly as the previous preview had it. This
-        # layer only owns the iPhone mic runtime and the daily native editor.
+        # Keep the existing loader, microphone and daily editor behavior exactly
+        # as-is; the additional inline block below is scoped only to Smart/Bale.
         if FINAL_JS + "?" not in body:
             body = body.replace(
                 "</body>",
@@ -221,6 +293,8 @@ def finalize_aqua_round8_field_runtime(response):
             )
         if 'id="aqua-daily-edit-native-v1"' not in body:
             body = body.replace("</body>", DAILY_EDIT_NATIVE + "</body>", 1)
+        if 'id="aqua-smart-bale-two-issue-fix-v1"' not in body:
+            body = body.replace("</body>", SMART_BALE_TWO_ISSUE_FIX + "</body>", 1)
 
         response.set_data(body)
         response.headers["Content-Length"] = str(len(response.get_data()))
