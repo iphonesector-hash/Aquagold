@@ -54,8 +54,9 @@ def test_customer_counts_are_consistent_with_finalized_services():
 def test_finance_sql_uses_safe_alias_and_finalized_service_semantics():
     code = source("aqua_bale_miniapp.py")
     block = code[code.index("def aqua_bale_mini_finance"):]
-    assert "AS report_day" in block
-    assert "::date day" not in block
+    lower = block.lower()
+    assert "as report_day" in lower
+    assert "::date day" not in lower
     assert "status not in ('cancelled','scheduled')" in block
     assert 'item["day"] = item.pop("report_day")' in block
 
