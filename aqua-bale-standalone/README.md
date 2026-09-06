@@ -5,8 +5,9 @@ This directory is intentionally isolated from the AquaGold production web app.
 ## Vercel
 - Production branch: `standalone/aqua-bale-20260906`
 - Root Directory: `aqua-bale-standalone`
-- Required environment values copied from the existing AquaGold project: `AQUAGOLD_DATABASE_URL` (or `DATABASE_URL`) and `AQUAGOLD_SECRET_KEY`.
-- With the same DB + secret key, this runtime can read the existing encrypted `bale_bot` token, webhook secret and allowed group IDs from `app_settings`. Optional overrides: `BALE_BOT_TOKEN`, `BALE_WEBHOOK_SECRET`, `BALE_ALLOWED_CHAT_IDS`.
+- Required database environment value copied from the existing AquaGold project: `AQUAGOLD_DATABASE_URL` (or `DATABASE_URL`).
+- `AQUAGOLD_SECRET_KEY` is preferred when the original project defines it. If the original AquaGold deployment has no explicit secret, the standalone entrypoint reuses AquaGold's stable runtime-secret bootstrap so the same database URL produces the same encryption/session secret material.
+- With the same DB + secret behavior, this runtime can read the existing encrypted `bale_bot` token, webhook secret and allowed group IDs from `app_settings`. Optional overrides: `BALE_BOT_TOKEN`, `BALE_WEBHOOK_SECRET`, `BALE_ALLOWED_CHAT_IDS`.
 
 ## Security contract for the Bale assistant
 - Private chats: never answer operational questions.
