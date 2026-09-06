@@ -295,8 +295,13 @@
     const id=row?.getAttribute?.('data-aqua-job-id')||row?.dataset?.aquaJobId;
     const app=appState();
     if(id&&app){
-      return (app.jobs||[]).find(job=>String(job?.id)===String(id))||
-             (app.dailyGroups||[]).flatMap(group=>group.completedJobs||[]).find(job=>String(job?.id)===String(id))||
+      let groups=[];
+      try{
+        if(Array.isArray(app.dailyGroups))groups=app.dailyGroups;
+        else if(typeof app.dailyGroups==='function')groups=app.dailyGroups()||[];
+      }catch{}
+      return (Array.isArray(app.jobs)?app.jobs:[]).find(job=>String(job?.id)===String(id))||
+             groups.flatMap(group=>group?.completedJobs||[]).find(job=>String(job?.id)===String(id))||
              null;
     }
     return null;
