@@ -1,7 +1,6 @@
 from importlib.util import module_from_spec, spec_from_file_location
 import os
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from flask import jsonify, request
 
@@ -43,20 +42,12 @@ def _block_standalone_webhook_activation():
         return jsonify({"error": "انتقال وب‌هوک ربات غیرفعال است؛ ربات روی AquaGold اصلی باقی می‌ماند."}), 410
     return None
 
-DEFAULT_MINIAPP_URL = os.getenv("AQUA_BALE_PUBLIC_URL") or "https://aquagold-bale-git-standalone-aqua-bale-20260906-i-sector.vercel.app"
 BALE_MINIAPP_DIRECT_URL = os.getenv("AQUA_BALE_DIRECT_LINK") or "https://ble.ir/aqua_goldbot?startapp"
 
 
-def _validated_miniapp_url(value: str) -> str:
-    url = str(value or "").strip(); parsed = urlsplit(url)
-    if parsed.scheme != "https" or not parsed.hostname:
-        raise MODULE.ValidationError("آدرس مینی‌اپ باید یک لینک امن HTTPS باشد")
-    return url
-
-
 def _group_miniapp_markup():
-    # Bale's official Mini App direct-link opens the BotFather-configured Main Mini App
-    # inside Bale, including when the link is tapped from a group.
+    # This is Bale's official Main Mini App deep link. From a Bale group it is
+    # resolved by Bale itself and opens the BotFather-configured Mini App in-app.
     return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": BALE_MINIAPP_DIRECT_URL}]]}
 
 
@@ -75,23 +66,6 @@ def send_bale_miniapp_button():
             settings,
             chat_id,
             "💧 AquaGold را داخل خود بله باز کن 👇",
-            reply_markup=_group_miniapp_markup(),
-        )
-        if isinstance(result, dict) and result.get("ok", True):
-            sent += 1
-    return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
-
-
-@app.get("/__aqua_resend_native_direct_73c9d1")
-def _resend_native_direct_once():
-    settings = MODULE._settings()
-    chats = settings.get("allowed_chat_ids") or []
-    sent = 0
-    for chat_id in chats:
-        result = MODULE._send_chat(
-            settings,
-            chat_id,
-            "💧 نسخه درون‌برنامه‌ای AquaGold آماده است. از دکمه زیر بازش کن 👇",
             reply_markup=_group_miniapp_markup(),
         )
         if isinstance(result, dict) and result.get("ok", True):
