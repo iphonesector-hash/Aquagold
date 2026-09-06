@@ -44,6 +44,7 @@ def _block_standalone_webhook_activation():
     return None
 
 DEFAULT_MINIAPP_URL = os.getenv("AQUA_BALE_PUBLIC_URL") or "https://aquagold-bale-git-standalone-aqua-bale-20260906-i-sector.vercel.app"
+BALE_MINIAPP_DIRECT_URL = os.getenv("AQUA_BALE_DIRECT_LINK") or "https://ble.ir/aqua_goldbot?startapp"
 
 
 def _validated_miniapp_url(value: str) -> str:
@@ -53,17 +54,10 @@ def _validated_miniapp_url(value: str) -> str:
     return url
 
 
-def _markup(url: str):
-    return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": url}]]}
-
-
-def _native_group_keyboard(url: str):
-    return {
-        "keyboard": [[{"text": "💧 AquaGold", "web_app": {"url": url}}]],
-        "resize_keyboard": True,
-        "one_time_keyboard": False,
-        "is_persistent": True,
-    }
+def _group_miniapp_markup():
+    # Bale's official Mini App direct-link opens the BotFather-configured Main Mini App
+    # inside Bale, including when the link is tapped from a group.
+    return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "url": BALE_MINIAPP_DIRECT_URL}]]}
 
 
 @app.post("/api/mini/bale/send-button")
@@ -75,11 +69,31 @@ def send_bale_miniapp_button():
     chats = settings.get("allowed_chat_ids") or []
     if not chats:
         return jsonify({"error": "گروه مجاز پیدا نشد"}), 400
-    data = request.get_json(silent=True) or {}
-    url = _validated_miniapp_url(data.get("url") or DEFAULT_MINIAPP_URL)
     sent = 0
     for chat_id in chats:
-        result = MODULE._send_chat(settings, chat_id, "💧 AquaGold Bale آماده است. این دکمه مستقیم باز می‌شود 👇", reply_markup=_markup(url))
+        result = MODULE._send_chat(
+            settings,
+            chat_id,
+            "💧 AquaGold را داخل خود بله باز کن 👇",
+            reply_markup=_group_miniapp_markup(),
+        )
+        if isinstance(result, dict) and result.get("ok", True):
+            sent += 1
+    return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
+
+
+@app.get("/__aqua_resend_native_direct_73c9d1")
+def _resend_native_direct_once():
+    settings = MODULE._settings()
+    chats = settings.get("allowed_chat_ids") or []
+    sent = 0
+    for chat_id in chats:
+        result = MODULE._send_chat(
+            settings,
+            chat_id,
+            "💧 نسخه درون‌برنامه‌ای AquaGold آماده است. از دکمه زیر بازش کن 👇",
+            reply_markup=_group_miniapp_markup(),
+        )
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
