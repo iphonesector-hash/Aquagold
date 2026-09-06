@@ -1,13 +1,11 @@
 from importlib.util import module_from_spec, spec_from_file_location
+import hashlib
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from flask import jsonify, request
 
-# Reuse AquaGold's existing stable secret derivation. This keeps encrypted
-# Bale settings readable without requiring a separate AQUAGOLD_SECRET_KEY
-# when the production project already derives it from its database settings.
 import aquagold_secret_bootstrap  # noqa: F401,E402
 
 MODULE_PATH = Path(__file__).resolve().parent / "aqua-bale-standalone" / "app.py"
@@ -17,10 +15,6 @@ if SPEC is None or SPEC.loader is None:
 MODULE = module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
-# Safe allowlist recovery for the standalone runtime only:
-# if AquaGold has never explicitly stored allowed_chat_ids but all historical
-# Bale jobs came from exactly one chat, use that one historical group. If there
-# are zero or multiple chats, remain fail-closed.
 _ORIGINAL_SETTINGS = MODULE._settings
 
 
@@ -30,10 +24,7 @@ def _settings_with_single_history_fallback():
         return settings
     try:
         with MODULE.get_db() as db, db.cursor() as cur:
-            cur.execute(
-                "select distinct chat_id::text as chat_id from bale_jobs "
-                "where chat_id is not null order by chat_id limit 2"
-            )
+            cur.execute("select distinct chat_id::text as chat_id from bale_jobs where chat_id is not null order by chat_id limit 2")
             rows = cur.fetchall()
         candidates = [str(row.get("chat_id")) for row in rows if row.get("chat_id") is not None]
         if len(candidates) == 1:
@@ -47,89 +38,66 @@ def _settings_with_single_history_fallback():
 MODULE._settings = _settings_with_single_history_fallback
 app = MODULE.app
 
-# The user explicitly chose not to move the live Bale webhook away from the
-# original AquaGold app. Keep the old standalone activation endpoint blocked so
-# it cannot be triggered accidentally.
 @app.before_request
 def _block_standalone_webhook_activation():
     if request.path == "/api/mini/bale/activate":
         return jsonify({"error": "انتقال وب‌هوک ربات غیرفعال است؛ ربات روی AquaGold اصلی باقی می‌ماند."}), 410
     return None
 
-
-DEFAULT_MINIAPP_URL = (
-    os.getenv("AQUA_BALE_PUBLIC_URL")
-    or "https://aquagold-bale-git-standalone-aqua-bale-20260906-i-sector.vercel.app"
-)
+DEFAULT_MINIAPP_URL = os.getenv("AQUA_BALE_PUBLIC_URL") or "https://aquagold-bale-git-standalone-aqua-bale-20260906-i-sector.vercel.app"
 
 
 def _validated_miniapp_url(value: str) -> str:
-    url = str(value or "").strip()
-    parsed = urlsplit(url)
+    url = str(value or "").strip(); parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.hostname:
         raise MODULE.ValidationError("آدرس مینی‌اپ باید یک لینک امن HTTPS باشد")
     return url
 
 
-@app.post("/api/mini/bale/menu-button")
+def _markup(url: str):
+    return {"inline_keyboard": [[{"text": "💧 باز کردن AquaGold", "web_app": {"url": url}}]]}
+
+
+@app.post("/api/mini/bale/send-button")
 @MODULE.auth_required
-def install_bale_menu_button():
-    """Set only Bale's default chat menu button; never touch the webhook."""
+def send_bale_miniapp_button():
     settings = MODULE._settings()
-    token = settings.get("bot_token") or ""
-    if not token:
-        return jsonify({"error": "توکن ربات بله در تنظیمات AquaGold پیدا نشد"}), 400
-
+    if not settings.get("bot_token"):
+        return jsonify({"error": "توکن ربات بله پیدا نشد"}), 400
+    chats = settings.get("allowed_chat_ids") or []
+    if not chats:
+        return jsonify({"error": "گروه مجاز پیدا نشد"}), 400
     data = request.get_json(silent=True) or {}
-    miniapp_url = _validated_miniapp_url(data.get("url") or DEFAULT_MINIAPP_URL)
-    menu_button = {
-        "type": "web_app",
-        "text": "💧 AquaGold",
-        "web_app": {"url": miniapp_url},
-    }
-    set_result = MODULE._bale_call(token, "setChatMenuButton", {"menu_button": menu_button})
-    get_result = MODULE._bale_call(token, "getChatMenuButton", {})
-    return jsonify(
-        {
-            "ok": bool(set_result.get("ok", True)),
-            "webhook_changed": False,
-            "miniapp_url": miniapp_url,
-            "menu_button": get_result.get("result") if isinstance(get_result, dict) else get_result,
-        }
-    )
+    url = _validated_miniapp_url(data.get("url") or DEFAULT_MINIAPP_URL)
+    sent = 0
+    for chat_id in chats:
+        result = MODULE._send_chat(settings, chat_id, "💧 AquaGold Bale آماده است. از دکمه زیر مینی‌اپ را باز کن 👇", reply_markup=_markup(url))
+        if isinstance(result, dict) and result.get("ok", True):
+            sent += 1
+    return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
 
 
-# Temporary one-shot installer. It is intentionally scoped to the separate
-# aquagold-bale Vercel project and this standalone branch, and it only calls
-# setChatMenuButton/getChatMenuButton. It never calls setWebhook.
-_MENU_INSTALL_RESULT = {"attempted": False, "ok": False}
-if (
-    os.getenv("VERCEL_PROJECT_PRODUCTION_URL") == "aquagold-bale.vercel.app"
-    and os.getenv("VERCEL_GIT_COMMIT_REF") == "standalone/aqua-bale-20260906"
-):
-    _MENU_INSTALL_RESULT["attempted"] = True
-    try:
-        _settings = MODULE._settings()
-        _token = _settings.get("bot_token") or ""
-        if not _token:
-            raise RuntimeError("Bale bot token is not configured")
-        _menu_button = {
-            "type": "web_app",
-            "text": "💧 AquaGold",
-            "web_app": {"url": DEFAULT_MINIAPP_URL},
-        }
-        _set = MODULE._bale_call(_token, "setChatMenuButton", {"menu_button": _menu_button})
-        _get = MODULE._bale_call(_token, "getChatMenuButton", {})
-        _MENU_INSTALL_RESULT = {
-            "attempted": True,
-            "ok": bool(_set.get("ok", True)),
-            "menu_button": _get.get("result") if isinstance(_get, dict) else _get,
-            "webhook_changed": False,
-        }
-    except Exception as exc:
-        _MENU_INSTALL_RESULT = {"attempted": True, "ok": False, "error": str(exc), "webhook_changed": False}
-
-
-@app.get("/health/menu-button")
-def menu_button_health():
-    return jsonify(_MENU_INSTALL_RESULT)
+@app.get("/api/mini/bale/one-shot/<key>")
+def one_shot_button_delivery(key):
+    expected = hashlib.sha256(str(os.getenv("VERCEL_GIT_COMMIT_SHA") or "").encode()).hexdigest()[:24]
+    if not expected or key != expected:
+        return jsonify({"ok": False}), 404
+    settings = MODULE._settings(); chats = settings.get("allowed_chat_ids") or []
+    if not settings.get("bot_token") or not chats:
+        return jsonify({"ok": False, "error": "تنظیمات ربات کامل نیست"}), 400
+    marker = "aqua_bale_button_one_shot_v1"
+    with MODULE.get_db() as db, db.cursor() as cur:
+        cur.execute("insert into app_settings(key,value,updated_at) values(%s,%s,now()) on conflict(key) do nothing returning key", (marker, MODULE.Jsonb({"done": True})))
+        claimed = cur.fetchone()
+    if not claimed:
+        return jsonify({"ok": True, "already_done": True, "webhook_changed": False})
+    sent = 0
+    for chat_id in chats:
+        result = MODULE._send_chat(settings, chat_id, "💧 AquaGold Bale آماده است. از دکمه زیر مینی‌اپ را باز کن 👇", reply_markup=_markup(DEFAULT_MINIAPP_URL))
+        if isinstance(result, dict) and result.get("ok", True):
+            sent += 1
+    if sent < 1:
+        with MODULE.get_db() as db, db.cursor() as cur:
+            cur.execute("delete from app_settings where key=%s", (marker,))
+        return jsonify({"ok": False, "button_sent": 0, "webhook_changed": False}), 502
+    return jsonify({"ok": True, "button_sent": sent, "webhook_changed": False})
