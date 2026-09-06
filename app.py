@@ -1,5 +1,4 @@
 from importlib.util import module_from_spec, spec_from_file_location
-import hashlib
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -75,29 +74,3 @@ def send_bale_miniapp_button():
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
-
-
-@app.get("/api/mini/bale/one-shot/<key>")
-def one_shot_button_delivery(key):
-    expected = hashlib.sha256(str(os.getenv("VERCEL_GIT_COMMIT_SHA") or "").encode()).hexdigest()[:24]
-    if not expected or key != expected:
-        return jsonify({"ok": False}), 404
-    settings = MODULE._settings(); chats = settings.get("allowed_chat_ids") or []
-    if not settings.get("bot_token") or not chats:
-        return jsonify({"ok": False, "error": "تنظیمات ربات کامل نیست"}), 400
-    marker = "aqua_bale_button_one_shot_v1"
-    with MODULE.get_db() as db, db.cursor() as cur:
-        cur.execute("insert into app_settings(key,value,updated_at) values(%s,%s,now()) on conflict(key) do nothing returning key", (marker, MODULE.Jsonb({"done": True})))
-        claimed = cur.fetchone()
-    if not claimed:
-        return jsonify({"ok": True, "already_done": True, "webhook_changed": False})
-    sent = 0
-    for chat_id in chats:
-        result = MODULE._send_chat(settings, chat_id, "💧 AquaGold Bale آماده است. از دکمه زیر مینی‌اپ را باز کن 👇", reply_markup=_markup(DEFAULT_MINIAPP_URL))
-        if isinstance(result, dict) and result.get("ok", True):
-            sent += 1
-    if sent < 1:
-        with MODULE.get_db() as db, db.cursor() as cur:
-            cur.execute("delete from app_settings where key=%s", (marker,))
-        return jsonify({"ok": False, "button_sent": 0, "webhook_changed": False}), 502
-    return jsonify({"ok": True, "button_sent": sent, "webhook_changed": False})
