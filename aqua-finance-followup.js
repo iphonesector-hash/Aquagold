@@ -10,18 +10,27 @@ function installStyles(){
   style.textContent=`
 #${ROOT_ID} .af-grid>*{min-width:0;max-width:100%}
 #${ROOT_ID} #af-settlement-form label{min-width:0;max-width:100%}
-#${ROOT_ID} #af-time{display:block;width:100%!important;min-width:0!important;max-width:100%!important;inline-size:100%!important;box-sizing:border-box;overflow:hidden}
-#${ROOT_ID} .af-card:has(.af-calendar){z-index:420!important}
-#${ROOT_ID} .af-datewrap:has(.af-calendar){z-index:430!important}
-#${ROOT_ID} .af-calendar{z-index:440!important;max-width:calc(100vw - 32px)}
+#${ROOT_ID} .af-time-wrap{display:block;width:100%;min-width:0;max-width:100%;margin-top:7px;border:1px solid #34516e;border-radius:13px;background:#06172a;overflow:hidden;box-sizing:border-box}
+#${ROOT_ID} #af-time{display:block!important;width:100%!important;min-width:0!important;max-width:100%!important;inline-size:100%!important;box-sizing:border-box!important;margin:0!important;border:0!important;border-radius:0!important;background:transparent!important;overflow:hidden!important;-webkit-appearance:none!important;appearance:none!important;direction:ltr!important;text-align:center!important;transform:none!important;position:static!important}
+#${ROOT_ID} .af-card:has(.af-calendar){z-index:32!important}
+#${ROOT_ID} .af-datewrap:has(.af-calendar){z-index:33!important}
+#${ROOT_ID} .af-calendar{z-index:34!important;max-width:calc(100vw - 32px)}
 #${ROOT_ID} [data-fold="settlement-form"].af-open>.af-fold>div{overflow:visible}
-#${ROOT_ID} [data-fold="settlement-form"].af-open{z-index:300}
+#${ROOT_ID} [data-fold="settlement-form"].af-open{z-index:20!important;scroll-margin-top:calc(env(safe-area-inset-top,0px) + 96px)}
 @media(max-width:520px){
   #${ROOT_ID} #af-settlement-form .af-grid{grid-template-columns:1fr}
-  #${ROOT_ID} #af-time{font-size:16px}
+  #${ROOT_ID} #af-time{font-size:16px!important}
 }
 `;
   document.head.appendChild(style);
+}
+function containTimeField(root){
+  const input=root.querySelector('#af-time');
+  if(!input||input.parentElement?.classList.contains('af-time-wrap'))return;
+  const wrap=document.createElement('span');
+  wrap.className='af-time-wrap';
+  input.parentNode.insertBefore(wrap,input);
+  wrap.appendChild(input);
 }
 function makeSettlementAccordion(root){
   const form=root.querySelector('#af-settlement-form');
@@ -73,9 +82,10 @@ function enhance(){
   const root=document.getElementById(ROOT_ID);
   if(!root)return;
   makeSettlementAccordion(root);
+  containTimeField(root);
   hideLegacyUnknownUi(root);
   if(!root.__aquaFinanceFollowupObserver){
-    const observer=new MutationObserver(()=>{makeSettlementAccordion(root);hideLegacyUnknownUi(root)});
+    const observer=new MutationObserver(()=>{makeSettlementAccordion(root);containTimeField(root);hideLegacyUnknownUi(root)});
     observer.observe(root,{childList:true,subtree:true});
     root.__aquaFinanceFollowupObserver=observer;
   }
