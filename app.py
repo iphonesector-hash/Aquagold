@@ -54,6 +54,9 @@ import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
 # Time-window-aware Bale tour + in-app Neshan navigation, scoped to the Map page.
 import aqua_smart_tour  # noqa: E402,F401
+# Register polish before the pro asset replacer: Flask executes after_request in
+# reverse registration order, so the pro fragment is emitted first and polished second.
+import aqua_navigation_polish  # noqa: E402,F401
 # Retain Neshan maneuver metadata and serve the professional Aria navigation UI.
 import aqua_navigation_pro  # noqa: E402,F401
 # Heading-up/pitched Neshan drive view + free map search/long-press destinations.
