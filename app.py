@@ -69,3 +69,66 @@ def send_bale_miniapp_button():
         if isinstance(result, dict) and result.get("ok", True):
             sent += 1
     return jsonify({"ok": sent > 0, "button_sent": sent, "webhook_changed": False})
+
+
+# The standalone day API originally returned only finalized services and
+# cancellations. The production AquaGold inbox stores fresh Bale work as
+# bale_jobs(status='new'/'review'), so include those rows in the same day view.
+_ORIGINAL_MINI_DAY = app.view_functions.get("mini_day")
+
+
+def _mini_day_with_pending():
+    if _ORIGINAL_MINI_DAY is None:
+        return jsonify({"error": "نمای روز در دسترس نیست"}), 500
+
+    original_response = app.make_response(_ORIGINAL_MINI_DAY())
+    if original_response.status_code != 200:
+        return original_response
+
+    payload = original_response.get_json(silent=True) or {}
+    day = MODULE._parse_day(request.args.get("date"))
+    start, end = MODULE._day_bounds(day)
+
+    with MODULE.get_db() as db, db.cursor() as cur:
+        cur.execute(
+            """select b.id,
+                      coalesce(nullif(trim(concat_ws(' ',c.first_name,c.last_name)),''),
+                               nullif(trim(b.customer_name),''),'بدون نام') customer_name,
+                      coalesce((select p.phone from customer_phones p
+                                where p.customer_id=c.id
+                                order by p.is_primary desc,p.id limit 1),b.phone,'') phone,
+                      coalesce(c.address,b.address) address,
+                      coalesce(b.job_type,'سرویس') job_type,
+                      b.status::text status,
+                      b.received_at,
+                      null::timestamptz completed_at,
+                      null::timestamptz cancelled_at,
+                      null::text cancel_reason,
+                      b.customer_id,
+                      b.service_visit_id,
+                      0::bigint received_amount,
+                      0::bigint company_share_amount
+               from bale_jobs b
+               left join customers_v2 c on c.id=b.customer_id
+               where b.status in ('new','review')
+                 and b.received_at >= %s and b.received_at < %s
+               order by b.received_at""",
+            (start, end),
+        )
+        pending = [MODULE._row(row) for row in cur.fetchall()]
+
+    jobs = list(payload.get("jobs") or [])
+    jobs.extend(pending)
+    jobs.sort(key=lambda item: str(item.get("received_at") or ""))
+    payload["jobs"] = jobs
+
+    summary = dict(payload.get("summary") or {})
+    summary["new"] = sum(item.get("status") == "new" for item in jobs)
+    summary["review"] = sum(item.get("status") == "review" for item in jobs)
+    summary["total"] = len(jobs)
+    payload["summary"] = summary
+    return jsonify(payload)
+
+
+if _ORIGINAL_MINI_DAY is not None:
+    app.view_functions["mini_day"] = _mini_day_with_pending
