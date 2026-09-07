@@ -9,7 +9,7 @@ from flask import request
 import app_v3
 
 
-FOLLOWUP_SCRIPT = '<script defer src="/aqua-finance-followup.js?v=20260907-f2"></script>'
+FOLLOWUP_SCRIPT = '<script defer src="/aqua-finance-followup.js?v=20260908-f3"></script>'
 
 
 def _payment_key(value):
