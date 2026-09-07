@@ -54,6 +54,9 @@ import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
 # Time-window-aware Bale tour + in-app Neshan navigation, scoped to the Map page.
 import aqua_smart_tour  # noqa: E402,F401
+# Controls fix is registered before polish so reverse after_request execution sees
+# the fully polished dynamic Navigation DOM and mounts day/night + minimize buttons.
+import aqua_navigation_controls_fix  # noqa: E402,F401
 # Register polish/GPS before the pro asset replacer: Flask executes after_request
 # in reverse registration order, so the pro fragment is emitted first and patched after.
 import aqua_navigation_polish  # noqa: E402,F401
