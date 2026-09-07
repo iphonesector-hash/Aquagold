@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]; then exit 0; else exit 1; fi",
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"main\" ] || [ \"$VERCEL_GIT_COMMIT_REF\" = \"feat/aqua-finance-visuals-20260907\" ]; then exit 1; else exit 0; fi",
   "git": {
     "deploymentEnabled": {
       "codex/aqua-ai-20260827": false,
@@ -24,7 +24,8 @@
       "fix/aqua-scoped-stability-20260901": false,
       "release-v8-qa": false,
       "release-v8-qa-2": false,
-      "release-v8-work-final": false
+      "release-v8-work-final": false,
+      "feat/aqua-finance-visuals-20260907": true
     }
   },
   "functions": {

@@ -79,6 +79,7 @@ import aqua_qa_backend_fix  # noqa: E402,F401
 import aqua_round7_fix  # noqa: E402,F401
 # Preserve explicit Groq settings while still allowing fresh-isolate secret recovery.
 import aqua_round7_settings_guard  # noqa: E402,F401
+import aqua_finance_dashboard  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
