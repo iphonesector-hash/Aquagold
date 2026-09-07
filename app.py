@@ -40,6 +40,7 @@ import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
 import app_commerce  # noqa: E402,F401
 import app_routing  # noqa: E402,F401
+import aqua_neshan_preview  # noqa: E402,F401
 import aqua_ai  # noqa: E402,F401
 import aqua_groq_runtime_hotfix  # noqa: E402,F401
 import aqua_live_search_hotfix  # noqa: E402,F401
@@ -103,6 +104,7 @@ def _health_with_ai_status():
         status = aqua_ai.configuration_status()
         payload["ai"] = "configured" if status["brain"] else "not_configured"
         payload["aqua_ai"] = status
+        payload["neshan"] = aqua_neshan_preview.configuration_status()
         try:
             bale = bale_bridge._public_settings(bale_bridge._load_settings())
             payload["bale"] = {"enabled": bale["enabled"], "token": bale["bot_token_configured"], "webhook": bale["webhook_configured"]}
