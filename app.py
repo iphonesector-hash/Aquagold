@@ -56,6 +56,8 @@ import aqua_smart_register_guard  # noqa: E402,F401
 import aqua_smart_tour  # noqa: E402,F401
 # Retain Neshan maneuver metadata and serve the professional Aria navigation UI.
 import aqua_navigation_pro  # noqa: E402,F401
+# Heading-up/pitched Neshan drive view + free map search/long-press destinations.
+import aqua_navigation_drive  # noqa: E402,F401
 # Visible Start Navigation CTA for routes drawn by the older optimizer.
 import aqua_smart_tour_start_fix  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
