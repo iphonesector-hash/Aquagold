@@ -68,9 +68,10 @@ import aqua_navigation_gps_fix  # noqa: E402,F401
 import aqua_navigation_pro  # noqa: E402,F401
 # Heading-up/pitched Neshan drive view + free map search/long-press destinations.
 import aqua_navigation_drive  # noqa: E402,F401
-# Drive adapter registers its own search handler, so lock the final Search +
-# Geocoding Plus fallback only after that registration is complete.
+# Drive adapter registers its own search handler, so lock the fallback after it.
 import aqua_navigation_search_fix  # noqa: E402,F401
+# Finally bind the current official /v3/search endpoint, preserving Geocoding Plus fallback.
+import aqua_navigation_search_v3_fix  # noqa: E402,F401
 # Visible Start Navigation CTA for routes drawn by the older optimizer.
 import aqua_smart_tour_start_fix  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
