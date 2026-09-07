@@ -52,6 +52,8 @@ import bale_inbox_guard  # noqa: E402,F401
 # Preview only: mirror live new/review Bale jobs read-only from main when configured.
 import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
+# Time-window-aware Bale tour + in-app Neshan navigation, scoped to the Map page.
+import aqua_smart_tour  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
 import aqua_push_runtime  # noqa: E402,F401
