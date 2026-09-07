@@ -13,7 +13,7 @@ import urllib.request
 
 from flask import jsonify, request
 
-from app_v3 import app, token_required
+from app_v3 import app, limiter, token_required
 from aquagold_validation import text
 
 
@@ -59,6 +59,21 @@ def _neshan_get(path: str, params: dict | None = None, timeout: int = 12):
     except Exception as exc:
         app.logger.warning("neshan_request_failed", exc_info=True)
         raise RuntimeError("سرویس نشان موقتاً در دسترس نیست") from exc
+
+
+@app.get("/api/map/neshan/probe")
+@limiter.limit("3 per minute")
+def neshan_probe():
+    """Temporary safe preview probe: validates the service key without exposing it."""
+    status = configuration_status()
+    if not status["service"]:
+        return jsonify({"ok": False, **status, "error": "service_key_missing"}), 503
+    try:
+        payload = _neshan_get("/v2/reverse", {"lat": 35.6892, "lng": 51.3890}, timeout=8)
+        usable = bool(payload) and not payload.get("error")
+        return jsonify({"ok": usable, **status, "reverse_geocode": usable})
+    except RuntimeError as exc:
+        return jsonify({"ok": False, **status, "error": str(exc)[:160]}), 502
 
 
 @app.get("/api/map/neshan/status")
