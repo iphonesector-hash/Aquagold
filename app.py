@@ -52,6 +52,8 @@ import aqua_smart_register_guard  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
 import aqua_requested_ui_hotfix  # noqa: E402,F401
 import aqua_push_runtime  # noqa: E402,F401
+# Final outer Bale command wrapper: recognizes /aqua before normal work intake.
+import bale_aqua_command_runtime  # noqa: E402,F401
 import aqua_finance_runtime  # noqa: E402,F401
 # Read-only bearer-authenticated surface for the Aqua Aria custom GPT.
 import aqua_gpt_actions  # noqa: E402,F401
