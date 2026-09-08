@@ -19,7 +19,7 @@ _JS = r'''
   el.dataset.aqIosLong='1';let timer=null,start=null,last=null,moved=false;
   const clear=()=>{if(timer){clearTimeout(timer);timer=null}};
   const pointToLatLng=(x,y)=>{const m=mainMap?.();if(!m)return null;const r=el.getBoundingClientRect();try{return m.containerPointToLatLng([x-r.left,y-r.top])}catch{return null}};
-  const fire=(x,y)=>{const ll=pointToLatLng(x,y);if(!ll)return;try{navigator.vibrate?.(30)}catch{};try{selectFreeDestination({lat:Number(ll.lat),lng:Number(ll.lng),name:'مقصد انتخابی روی نقشه',address:'',source:'hold'})}catch(e){console.warn('Aqua long press destination failed',e)}};
+  const fire=(x,y)=>{const ll=pointToLatLng(x,y);if(!ll)return;try{navigator.vibrate?.(30)}catch{};try{selectFreeDestination({lat:Number(ll.lat),lng:Number(ll.lng),name:'مقصد انتخابی روی نقشه',address:'',source:'hold'});setTimeout(()=>document.getElementById('aqst-free-card')?.classList.add('aqst-picked-visible'),30)}catch(e){console.warn('Aqua long press destination failed',e)}};
   el.addEventListener('touchstart',e=>{if(e.touches.length!==1)return;const t=e.touches[0];start={x:t.clientX,y:t.clientY};last=start;moved=false;clear();timer=setTimeout(()=>{timer=null;if(!moved&&last)fire(last.x,last.y)},680)},{passive:true});
   el.addEventListener('touchmove',e=>{if(!start||!e.touches.length)return;const t=e.touches[0];last={x:t.clientX,y:t.clientY};if(Math.hypot(last.x-start.x,last.y-start.y)>14){moved=true;clear()}},{passive:true});
   ['touchend','touchcancel'].forEach(n=>el.addEventListener(n,()=>{clear();start=null;last=null;moved=false},{passive:true}));
@@ -41,6 +41,16 @@ _CSS = r'''
 #mainMap{touch-action:pan-x pan-y pinch-zoom}
 #aqst-free-card:not([hidden]){animation:aqstPickPop .18s ease-out}
 @keyframes aqstPickPop{from{transform:translateY(8px) scale(.985);opacity:.35}to{transform:none;opacity:1}}
+@media(max-width:700px){
+ #aqst-free-card:not([hidden]){position:fixed!important;left:12px!important;right:12px!important;bottom:calc(94px + env(safe-area-inset-bottom,0px))!important;z-index:2147481600!important;margin:0!important;padding:12px!important;border-radius:18px!important;background:rgba(6,22,38,.97)!important;border:1px solid rgba(92,214,255,.38)!important;box-shadow:0 14px 34px rgba(0,0,0,.42)!important;backdrop-filter:blur(14px)!important}
+ #aqst-free-card .aqst-free-card-copy{min-width:0!important}
+ #aqst-free-card .aqst-free-card-copy b{display:block!important;font-size:.95rem!important;color:#fff!important}
+ #aqst-free-card .aqst-free-card-copy small{display:block!important;margin-top:3px!important;color:#9fb6c7!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important}
+ #aqst-free-card .aqst-free-card-actions{display:flex!important;gap:8px!important;margin-top:10px!important}
+ #aqst-free-card .aqst-free-card-actions button{flex:1!important;min-height:44px!important;border-radius:13px!important;font-weight:900!important}
+ #aqst-free-card .aqst-free-start{background:linear-gradient(135deg,#16c9d5,#18b985)!important;color:#fff!important}
+ #aqst-free-card .aqst-free-clear{background:#16324a!important;color:#e8f5ff!important}
+}
 '''.strip()
 
 
