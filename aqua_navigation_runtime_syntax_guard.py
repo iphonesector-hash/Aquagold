@@ -2,11 +2,14 @@
 
 The navigation UI is assembled by multiple branch-scoped after_request layers.
 This final guard normalizes the generated async function boundary and Wake Lock
-statement before the JavaScript reaches Safari. No other app surface is touched.
+statement before the JavaScript reaches Safari. It also imports the iOS-native
+long-press destination picker so that picker is registered in the same map-only
+response chain. No other app surface is touched.
 """
 from flask import request
 
 import app_v3
+import aqua_map_longpress_ios_fix  # noqa: F401
 
 
 @app_v3.app.after_request
@@ -19,6 +22,7 @@ def aqua_navigation_runtime_syntax_guard(response):
         source = source.replace("async async function initNavMap", "async function initNavMap")
         source = source.replace("async function aqClamp(v,a,b)", "function aqClamp(v,a,b)")
         source = source.replace("\nfunction startNavigation(target)", "\nasync function startNavigation(target)")
+        source = source.replace("\nasync async function startNavigation(target)", "\nasync function startNavigation(target)")
         source = source.replace("await aqAcquireWakeLock()const ", "await aqAcquireWakeLock();const ")
         source = source.replace("await aqAcquireWakeLock()const", "await aqAcquireWakeLock();const")
         response.set_data(source)
