@@ -86,6 +86,8 @@ import aqua_gpt_actions  # noqa: E402,F401
 import aqua_scoped_branch_hotfix  # noqa: E402,F401
 # Final isolated QA layer: live web/model recovery, exact clock, layout and Push test.
 import aqua_branch_final_fix  # noqa: E402,F401
+# Keep Web Push working with both the legacy JSONB and newer split-column schemas.
+import aqua_push_schema_compat  # noqa: E402,F401
 # Register Round 4 before Round 3 so Flask's reverse after_request order emits Round 4 last.
 import aqua_round4_ui_fix  # noqa: E402,F401
 # Register the final UI injector before Round 2 so its script is emitted after Round 2.

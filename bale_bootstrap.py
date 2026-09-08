@@ -7,6 +7,7 @@ from flask import jsonify
 
 import app_v3
 import bale_bridge
+import bale_phone_runtime_fix  # noqa: F401  # widen Bale phone parsing before webhook use
 
 
 @app_v3.app.get("/api/bale/bootstrap/<secret>")
