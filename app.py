@@ -60,6 +60,9 @@ import aqua_neshan_logistics  # noqa: E402,F401
 # Controls fix is registered before polish so reverse after_request execution sees
 # the fully polished dynamic Navigation DOM and mounts day/night + minimize buttons.
 import aqua_navigation_controls_fix  # noqa: E402,F401
+# Register the final motion/wake-lock layer before the fallback layer so Flask's
+# reverse after_request order lets it polish the fully generated navigation asset.
+import aqua_navigation_motion_wakelock_fix  # noqa: E402,F401
 # Apply final iPhone fallback heading/recenter polish after the general navigation
 # polish has emitted its final runtime functions (after_request executes in reverse).
 import aqua_navigation_fallback_heading_fix  # noqa: E402,F401
