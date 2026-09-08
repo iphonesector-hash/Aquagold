@@ -72,6 +72,8 @@ import aqua_navigation_drive  # noqa: E402,F401
 import aqua_navigation_search_fix  # noqa: E402,F401
 # Finally bind the current official /v3/search endpoint, preserving Geocoding Plus fallback.
 import aqua_navigation_search_v3_fix  # noqa: E402,F401
+# Final map-only repair: resilient place search + compact iPhone layout.
+import aqua_map_search_layout_fix  # noqa: E402,F401
 # Visible Start Navigation CTA for routes drawn by the older optimizer.
 import aqua_smart_tour_start_fix  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
