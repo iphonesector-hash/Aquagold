@@ -32,7 +32,13 @@ def aqua_navigation_voice_dedupe_asset(response):
         # same turn if GPS jitter moved 105m -> 114m because those distances fall
         # into different announcement bands even though the maneuver is identical.
         pattern = r"function maybeAnnounceManeuver\(info\)\{.*?\}\n(?=function pointAhead)"
-        source, count = re.subn(pattern, _VOICE_DEDUPE_BLOCK + "\n", source, count=1, flags=re.S)
+        source, count = re.subn(
+            pattern,
+            lambda _: _VOICE_DEDUPE_BLOCK + "\n",
+            source,
+            count=1,
+            flags=re.S,
+        )
         if count != 1:
             raise RuntimeError("navigation maneuver announcer was not found exactly once")
 
