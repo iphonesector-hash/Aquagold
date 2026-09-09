@@ -57,6 +57,9 @@ import aqua_smart_tour  # noqa: E402,F401
 # Prefer Neshan's official VRP/logistics solver for time-window tours; retain the
 # existing Aqua planner as a deterministic fallback if the service is unavailable.
 import aqua_neshan_logistics  # noqa: E402,F401
+# Fullscreen panel layer is registered before voice/controls so reverse
+# after_request execution sees their final generated navigation runtime.
+import aqua_navigation_fullscreen_panels  # noqa: E402,F401
 # Voice dedupe is registered before controls so reverse after_request execution
 # sees the final generated maneuver runtime and owns semantic announcement gating.
 import aqua_navigation_voice_dedupe  # noqa: E402,F401
