@@ -57,6 +57,9 @@ import aqua_smart_register_guard  # noqa: E402,F401
 import aqua_map_navigation_final_fix  # noqa: E402,F401
 # Time-window-aware Bale tour + in-app Neshan navigation, scoped to the Map page.
 import aqua_smart_tour  # noqa: E402,F401
+# Resilient Persian place search: Neshan Search -> Geocoding -> OSM discovery.
+# Imported after Smart Tour so it can safely replace only the place-search endpoint.
+import aqua_map_search_layout_fix  # noqa: E402,F401
 # Prefer Neshan's official VRP/logistics solver for time-window tours; retain the
 # existing Aqua planner as a deterministic fallback if the service is unavailable.
 import aqua_neshan_logistics  # noqa: E402,F401
@@ -75,6 +78,8 @@ import aqua_navigation_drive  # noqa: E402,F401
 import aqua_navigation_search_fix  # noqa: E402,F401
 # Finally bind the current official /v3/search endpoint, preserving Geocoding Plus fallback.
 import aqua_navigation_search_v3_fix  # noqa: E402,F401
+# Re-assert the resilient endpoint after legacy search adapters register their own handlers.
+app.view_functions["smart_tour_place_search"] = aqua_map_search_layout_fix._resilient_place_search
 # Visible Start Navigation CTA for routes drawn by the older optimizer.
 import aqua_smart_tour_start_fix  # noqa: E402,F401
 import aqua_voice_injector  # noqa: E402,F401
