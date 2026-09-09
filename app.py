@@ -52,6 +52,9 @@ import bale_inbox_guard  # noqa: E402,F401
 # Preview only: mirror live new/review Bale jobs read-only from main when configured.
 import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
+# CSS-only guard registers first so Flask's reverse after_request order emits its
+# compact iPhone overrides after the existing Map/Navigation guard.
+import aqua_map_compact_css_guard  # noqa: E402,F401
 # Register the PR29 Map/Navigation guard before the older map injectors so,
 # under Flask's reverse after_request order, it normalizes their final assets last.
 import aqua_map_navigation_final_fix  # noqa: E402,F401
