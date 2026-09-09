@@ -62,8 +62,8 @@ def _assert_generated_js_parses(js: str) -> None:
 
 def _generated_function(js: str, name: str, next_name: str) -> str:
     start = js.index(f"function {name}(")
-    end = js.index(f"\n\nfunction {next_name}(", start)
-    return js[start:end]
+    end = js.index(f"function {next_name}(", start + 1)
+    return js[start:end].rstrip()
 
 
 def _assert_generated_ios_long_press_behavior(js: str) -> None:
