@@ -75,7 +75,6 @@ def test_phase1_generated_map_ui_contract_is_compact_and_unique():
         assert map_html.count(f">{label}<") == 1, label
     assert 'grid-template-columns:repeat(3,minmax(0,1fr))!important' in css
     assert '.no-print>.aqst-route-pair{display:contents!important}' in css
-    assert 'height:36px!important' in css
 
     # Customer search is the existing functional control, only compacted. Its
     # query/results/selection functions must still survive final asset generation.
@@ -86,7 +85,7 @@ def test_phase1_generated_map_ui_contract_is_compact_and_unique():
     assert '#aq-smart-tour .aqst-searchbar input{height:38px!important' in css
     assert '#aq-smart-tour .aqst-results{top:43px!important}' in css
 
-    # Address/place search remains present and usable; Phase 1 must not remove it.
+    # Address/place search remains present and usable; Phase 1/2 must not remove it.
     assert "aqst-free-search" in js
     assert "aqst-map-place-q" in js
     assert "searchFreePlaces" in js
@@ -96,6 +95,45 @@ def test_phase1_generated_map_ui_contract_is_compact_and_unique():
     assert js.count("host.id='aq-smart-tour'") == 1
     assert js.count("controls.id='aqst-controls'") == 1
     assert js.count("box.id='aqst-free-search'") == 1
+
+    _assert_css_structurally_valid(css)
+    _assert_generated_js_parses(js)
+
+
+def test_phase2_generated_long_press_is_ios_safe_and_selected_card_is_compact():
+    js = _asset("/aqua-smart-tour.js")
+    css = _asset("/aqua-smart-tour.css")
+
+    # Phase 2 replaces the single existing long-press function rather than adding
+    # a second owner. Touch gets a dedicated capture-path because Leaflet can emit
+    # pointercancel on iPhone while the finger is still held down.
+    assert js.count("function bindMainMapLongPress()") == 1
+    assert "el.dataset.aqLongPress==='2'" in js
+    assert "e.pointerType==='touch'" in js
+    assert "addEventListener('touchstart'" in js
+    assert "addEventListener('touchmove'" in js
+    assert "['touchend','touchcancel']" in js
+    assert "capture:true" in js
+    assert "source:'hold'" in js
+    assert "Date.now()-lastFire<1200" in js
+
+    # A held destination still flows through the existing free-destination card,
+    # reverse geocoding and navigation start path.
+    assert "selectFreeDestination({lat:ll.lat,lng:ll.lng" in js
+    assert "/api/map/neshan/reverse?lat=${point.lat}&lng=${point.lng}" in js
+    assert "aqst-free-card" in js
+    assert "aqst-free-start" in js
+
+    # The customer selection card shown in the user's iPhone screenshot must no
+    # longer expand vertically. The three top actions retain one row, but regain
+    # comfortable visual size and use the full available Map header width.
+    assert "Aqua Map Phase 2 — iPhone long-press + compact selected customer correction" in css
+    assert 'width:calc(100% + 8px)!important' in css
+    assert 'height:40px!important' in css
+    assert 'grid-template-columns:minmax(0,1fr) auto!important' in css
+    assert 'max-height:72px!important' in css
+    assert 'flex-direction:row!important' in css
+    assert '-webkit-touch-callout:none!important' in css
 
     _assert_css_structurally_valid(css)
     _assert_generated_js_parses(js)
