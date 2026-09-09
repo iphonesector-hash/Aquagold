@@ -57,6 +57,9 @@ import aqua_smart_tour  # noqa: E402,F401
 # Prefer Neshan's official VRP/logistics solver for time-window tours; retain the
 # existing Aqua planner as a deterministic fallback if the service is unavailable.
 import aqua_neshan_logistics  # noqa: E402,F401
+# Voice dedupe is registered before controls so reverse after_request execution
+# sees the final generated maneuver runtime and owns semantic announcement gating.
+import aqua_navigation_voice_dedupe  # noqa: E402,F401
 # Controls fix is registered before polish so reverse after_request execution sees
 # the fully polished dynamic Navigation DOM and mounts day/night + minimize buttons.
 import aqua_navigation_controls_fix  # noqa: E402,F401
