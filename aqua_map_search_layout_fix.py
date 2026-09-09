@@ -1,8 +1,8 @@
-"""Map-only search fallback and compact mobile layout repair.
+"""Map-only resilient place search for PR #29.
 
-Keeps the current Finance/Map integration isolated while restoring the map UI
-that was previously validated on iPhone: resilient Persian place search,
-three primary map controls on one row, and compact customer/address search.
+The final Map/Navigation guard owns all compact mobile layout behavior. This
+module intentionally owns only the place-search endpoint so two independent
+MutationObservers cannot move the same map controls back and forth.
 """
 from __future__ import annotations
 
@@ -159,83 +159,6 @@ def _resilient_place_search():
     return jsonify({"error": "برای این عبارت نتیجه‌ای پیدا نشد. نام خیابان یا مکان را کمی کامل‌تر بنویس."}), 404
 
 
+# This module must be imported after aqua_smart_tour so the endpoint exists.
 if "smart_tour_place_search" in app_v3.app.view_functions:
     app_v3.app.view_functions["smart_tour_place_search"] = _resilient_place_search
-
-
-_LAYOUT_JS = r'''
-;(()=>{
- if(window.__aquaMapLayoutFix20260909)return;window.__aquaMapLayoutFix20260909=true;
- const has=(b,t)=>String(b?.textContent||'').replace(/\s+/g,' ').includes(t);
- function tidy(){
-  const map=document.getElementById('mainMap');if(!map)return;
-  const root=map.closest('section')||map.parentElement?.parentElement||document;
-  const buttons=[...root.querySelectorAll('button')];
-  const locate=buttons.find(b=>has(b,'موقعیت من'));
-  const near=buttons.find(b=>has(b,'اطراف من'));
-  const opt=buttons.find(b=>has(b,'بهینه‌سازی مسیر'));
-  if(!locate||!near||!opt)return;
-  let group=root.querySelector('.aq-map-primary-actions');
-  if(!group){
-   const holder=locate.parentElement;if(!holder)return;
-   group=document.createElement('div');
-   group.className='aq-map-primary-actions aqst-route-pair';
-   holder.insertBefore(group,locate);
-  }
-  [locate,near,opt].forEach(b=>{if(b.parentElement!==group)group.appendChild(b)});
- }
- let timer=0;const schedule=()=>{clearTimeout(timer);timer=setTimeout(tidy,30)};
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',tidy,{once:true});else tidy();
- new MutationObserver(schedule).observe(document.documentElement,{subtree:true,childList:true});
- setTimeout(tidy,250);setTimeout(tidy,900);setTimeout(tidy,1800);
-})();
-'''.strip()
-
-_LAYOUT_CSS = r'''
-/* Aqua map compact regression guard — 20260909 */
-.aq-map-primary-actions.aqst-route-pair{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:5px!important;width:100%!important;align-items:stretch!important}
-.aq-map-primary-actions.aqst-route-pair>.btn,.aq-map-primary-actions.aqst-route-pair>button{width:100%!important;min-width:0!important;margin:0!important;justify-content:center!important;align-items:center!important;padding:.62rem .18rem!important;gap:4px!important;white-space:nowrap!important;line-height:1.2!important;font-size:.70rem!important;border-radius:13px!important}
-.aq-map-primary-actions.aqst-route-pair svg{width:16px!important;height:16px!important;flex:0 0 16px!important}
-#aq-smart-tour .aqst-search{margin-bottom:7px!important}
-#aq-smart-tour .aqst-searchbar{gap:6px!important;align-items:center!important}
-#aq-smart-tour .aqst-searchbar input{height:44px!important;min-height:44px!important;padding:0 11px!important;margin:0!important;font-size:16px!important}
-#aq-smart-tour .aqst-iconbtn{width:44px!important;height:44px!important;min-height:44px!important;margin:0!important}
-#aq-smart-tour .aqst-selected{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:7px!important;height:auto!important;min-height:0!important;margin:7px 0 0!important;padding:8px 9px!important}
-#aq-smart-tour .aqst-selected-copy{min-width:0!important;flex:none!important}
-#aq-smart-tour .aqst-selected-copy b{margin:0!important;line-height:1.35!important}
-#aq-smart-tour .aqst-selected-copy small{margin-top:1px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;max-width:48vw!important;line-height:1.35!important}
-#aq-smart-tour .aqst-selected>div:last-child{display:flex!important;align-items:center!important;gap:5px!important;width:auto!important;margin:0!important}
-#aq-smart-tour .aqst-selected .aqst-btn{padding:6px 8px!important;border-radius:11px!important;font-size:.68rem!important;line-height:1.15!important;min-height:34px!important}
-#aqst-free-search{margin-top:7px!important}
-#aqst-free-search .aqst-free-searchbar{gap:6px!important;align-items:center!important}
-#aqst-free-search .aqst-free-searchbar input,#aqst-free-search .aqst-free-searchbar button{height:43px!important;min-height:43px!important;margin:0!important}
-#aqst-free-search .aqst-free-searchbar button{padding:0 10px!important;font-size:.74rem!important}
-#aqst-free-search .aqst-free-hint{padding-top:4px!important;font-size:.68rem!important}
-@media(max-width:390px){.aq-map-primary-actions.aqst-route-pair{gap:4px!important}.aq-map-primary-actions.aqst-route-pair>.btn,.aq-map-primary-actions.aqst-route-pair>button{font-size:.64rem!important;padding:.58rem .08rem!important}.aq-map-primary-actions.aqst-route-pair svg{width:15px!important;height:15px!important}}
-'''.strip()
-
-
-@app_v3.app.after_request
-def aqua_map_search_layout_assets(response):
-    try:
-        if response.status_code != 200:
-            return response
-        if request.path == "/aqua-smart-tour.js":
-            response.direct_passthrough = False
-            source = response.get_data(as_text=True)
-            if "__aquaMapLayoutFix20260909" not in source:
-                source += "\n" + _LAYOUT_JS + "\n"
-                response.set_data(source)
-                response.headers["Content-Length"] = str(len(response.get_data()))
-                response.headers["Cache-Control"] = "no-store, max-age=0"
-        elif request.path == "/aqua-smart-tour.css":
-            response.direct_passthrough = False
-            css = response.get_data(as_text=True)
-            if "Aqua map compact regression guard — 20260909" not in css:
-                css += "\n" + _LAYOUT_CSS + "\n"
-                response.set_data(css)
-                response.headers["Content-Length"] = str(len(response.get_data()))
-                response.headers["Cache-Control"] = "no-store, max-age=0"
-    except Exception as exc:
-        app_v3.logger.warning("aqua_map_search_layout_asset_failed: %s", str(exc)[:180])
-    return response
