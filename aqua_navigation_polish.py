@@ -117,6 +117,8 @@ function aqSyncMainNavMini(point){if(!ST.nav.minimized||!point||!window.L)return
 function aqEnsureResume(){let b=$('#aqst-nav-resume');if(b)return b;const frame=$('.aq-map-frame');if(!frame)return null;b=document.createElement('button');b.id='aqst-nav-resume';b.type='button';b.textContent='↗ بازگشت به مسیریابی';b.hidden=true;b.addEventListener('click',aqResumeNavigation);frame.appendChild(b);return b}
 function aqMinimizeNavigation(){if(!ST.nav.active)return;ST.nav.minimized=true;document.documentElement.classList.remove('aqst-nav-fullscreen');$('#aqst-nav').hidden=true;const b=aqEnsureResume();if(b)b.hidden=false;aqSyncMainNavMini(ST.nav.lastMatched||ST.nav.lastPos);setTimeout(()=>mainMap()?.invalidateSize?.(),80)}
 function aqResumeNavigation(){if(!ST.nav.active)return;ST.nav.minimized=false;aqRemoveMainNavMini();const b=$('#aqst-nav-resume');if(b)b.hidden=true;document.documentElement.classList.add('aqst-nav-fullscreen');$('#aqst-nav').hidden=false;setTimeout(()=>{try{ST.nav.mapKind==='gl'?ST.nav.map?.resize?.():ST.nav.map?.invalidateSize?.()}catch{}setFollowMode(true)},90)}
+async function aqRestoreWakeLock(){if(!ST.nav.active||document.visibilityState!=='visible'||!navigator.wakeLock?.request)return;if(ST.nav.wake&&!ST.nav.wake.released)return;try{ST.nav.wake=await navigator.wakeLock.request('screen')}catch{ST.nav.wake=null}}
+function aqRefreshNavViewport(){if(!ST.nav.active)return;setTimeout(()=>{try{ST.nav.mapKind==='gl'?ST.nav.map?.resize?.():ST.nav.map?.invalidateSize?.()}catch{}if(ST.nav.lastPos)updateDriveCamera(ST.nav.lastPos,ST.nav.lastCoords||{},ST.nav.lastNear||nearestPointInfo(ST.nav.lastPos,ST.nav.route?.points||[]),true)},120)}
 async function aqToggleNavTheme(){ST.nav.theme=ST.nav.theme==='night'?'day':'night';const b=$('#aqst-theme');if(b)b.textContent=ST.nav.theme==='night'?'☀':'☾';if(!ST.nav.active||!ST.nav.lastPos)return;const p=ST.nav.lastPos;await initNavMap(ST.nav.route,p,ST.nav.target);updateNavPosition(p,ST.nav.lastCoords||{},true)}
 function aqTidyMapToolbar(){const el=$('#mainMap');if(!el)return;let root=el.closest('section')||el.parentElement?.parentElement||document;const buttons=[...root.querySelectorAll('button')],near=buttons.find(b=>b.textContent.includes('اطراف من')),opt=buttons.find(b=>b.textContent.includes('بهینه‌سازی مسیر'));if(near&&opt&&near.parentElement===opt.parentElement&&!near.closest('.aqst-route-pair')){const pair=document.createElement('div');pair.className='aqst-route-pair';near.parentElement.insertBefore(pair,near);pair.append(near,opt)}}
 async function aqSetupMainNeshan(){
@@ -141,6 +143,7 @@ _UPDATE_POS = r'''function updateNavPosition(pos,coords={},initial=false){if(!ST
 
 _POLISH_JS = r'''
 aqSetupPolish();
+if(!window.__aquaNavLifecycleBound){window.__aquaNavLifecycleBound=true;document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){aqRestoreWakeLock();aqRefreshNavViewport()}});window.addEventListener('orientationchange',aqRefreshNavViewport,{passive:true});window.visualViewport?.addEventListener?.('resize',aqRefreshNavViewport,{passive:true})}
 const aqPolishObserver=new MutationObserver(()=>{aqTidyMapToolbar();if($('#mainMap'))aqSetupMainNeshan()});
 aqPolishObserver.observe(document.documentElement,{subtree:true,childList:true});
 '''.strip()
