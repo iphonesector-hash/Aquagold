@@ -62,7 +62,10 @@ def _assert_generated_js_parses(js: str) -> None:
 
 def _generated_function(js: str, name: str, next_name: str) -> str:
     start = js.index(f"function {name}(")
-    end = js.index(f"function {next_name}(", start + 1)
+    tail = js[start + 1 :]
+    next_match = re.search(rf"(?:async\s+)?function\s+{re.escape(next_name)}\(", tail)
+    assert next_match, f"generated function {next_name} missing"
+    end = start + 1 + next_match.start()
     return js[start:end].rstrip()
 
 
