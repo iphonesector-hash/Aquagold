@@ -53,3 +53,13 @@ def test_final_map_navigation_css_is_compact_and_mobile_safe():
     assert '#8b2cff' in css
     assert '#aqst-free-card:not([hidden])' in css
     assert 'bottom:calc(94px + env(safe-area-inset-bottom,0px))' in css
+
+
+def test_resilient_place_search_remains_the_final_search_handler():
+    handler = app.view_functions['smart_tour_place_search']
+    names = []
+    current = handler
+    while current is not None:
+        names.append(getattr(current, '__name__', ''))
+        current = getattr(current, '__wrapped__', None)
+    assert '_resilient_place_search' in names
