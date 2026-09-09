@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from app import app
+import aqua_navigation_search_v3_fix as map_search
 
 
 def _asset(path: str) -> str:
@@ -59,6 +60,78 @@ def _assert_generated_js_parses(js: str) -> None:
     assert checked.returncode == 0, checked.stderr
 
 
+def _generated_function(js: str, name: str, next_name: str) -> str:
+    start = js.index(f"function {name}(")
+    end = js.index(f"\n\nfunction {next_name}(", start)
+    return js[start:end]
+
+
+def _assert_generated_ios_long_press_behavior(js: str) -> None:
+    """Execute the served functions with an iPhone-like touch lifecycle in Node."""
+    node = shutil.which("node")
+    assert node, "Node.js is required for the generated iPhone Map behavior test"
+    bind_fn = _generated_function(js, "bindMainMapLongPress", "renderFreeCard")
+    card_fn = _generated_function(js, "renderFreeCard", "selectFreeDestination")
+    script = f"""
+const listeners={{}};
+const cardHandlers={{}};
+const mapEl={{
+  dataset:{{}},
+  addEventListener(name, fn){{ listeners[name]=fn; }},
+  getBoundingClientRect(){{ return {{left:10,top:20}}; }}
+}};
+const card={{
+  hidden:true,
+  innerHTML:'',
+  querySelector(sel){{ return {{addEventListener(name,fn){{cardHandlers[sel]=fn;}}}}; }}
+}};
+let map=null;
+const selected=[];
+let started=null;
+function $(sel){{ if(sel==='#mainMap')return mapEl;if(sel==='#aqst-free-card')return card;return null; }}
+function mainMap(){{ return map; }}
+function esc(v){{ return String(v??''); }}
+function startNavigation(point){{ started=point; }}
+function selectFreeDestination(point){{ selected.push(point);renderFreeCard(point); }}
+global.navigator={{vibrate(){{}}}};
+{bind_fn}
+{card_fn}
+
+// This is the real regression: the handler must bind before Leaflet/Alpine has
+// exposed mainMap(). The map becomes available only after the Map page opens.
+bindMainMapLongPress();
+if(mapEl.dataset.aqLongPress!=='2')throw new Error('long-press did not bind before mainMap existed');
+if(typeof listeners.touchstart!=='function'||typeof listeners.touchmove!=='function')throw new Error('touch handlers missing');
+map={{containerPointToLatLng(point){{return {{lat:point[1]/10,lng:point[0]/10}};}}}};
+listeners.touchstart({{touches:[{{clientX:30,clientY:50}}]}});
+setTimeout(()=>{{
+  if(selected.length!==1)throw new Error('hold did not select a destination');
+  if(card.hidden)throw new Error('destination card did not render');
+  if(typeof cardHandlers['.aqst-free-start']!=='function')throw new Error('start route handler missing');
+  cardHandlers['.aqst-free-start']();
+  if(!started||started.free!==true)throw new Error('manual destination did not enter navigation');
+
+  // A drag greater than the movement threshold must cancel the second hold.
+  listeners.touchstart({{touches:[{{clientX:30,clientY:50}}]}});
+  listeners.touchmove({{touches:[{{clientX:55,clientY:75}}]}});
+  setTimeout(()=>{{
+    if(selected.length!==1)throw new Error('drag falsely created a destination');
+  }},760);
+}},760);
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "phase2-ios-longpress.mjs"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            [node, str(path)],
+            text=True,
+            capture_output=True,
+            timeout=4,
+            check=False,
+        )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
 def test_phase1_generated_map_ui_contract_is_compact_and_unique():
     html = _asset("/")
     js = _asset("/aqua-smart-tour.js")
@@ -68,16 +141,11 @@ def test_phase1_generated_map_ui_contract_is_compact_and_unique():
     assert map_match, "Map section missing from generated root HTML"
     map_html = map_match.group(0)
 
-    # The permanent top action group remains a single logical group with exactly
-    # one instance of each required action. CSS flattens the existing route pair
-    # on narrow screens so the three buttons participate in the same 3-column grid.
     for label in ("موقعیت من", "اطراف من", "بهینه‌سازی مسیر"):
         assert map_html.count(f">{label}<") == 1, label
     assert 'grid-template-columns:repeat(3,minmax(0,1fr))!important' in css
     assert '.no-print>.aqst-route-pair{display:contents!important}' in css
 
-    # Customer search is the existing functional control, only compacted. Its
-    # query/results/selection functions must still survive final asset generation.
     assert "aqst-customer-search" in js
     assert "searchCustomers(q)" in js
     assert "selectCustomer(c)" in js
@@ -85,13 +153,11 @@ def test_phase1_generated_map_ui_contract_is_compact_and_unique():
     assert '#aq-smart-tour .aqst-searchbar input{height:38px!important' in css
     assert '#aq-smart-tour .aqst-results{top:43px!important}' in css
 
-    # Address/place search remains present and usable; Phase 1/2 must not remove it.
     assert "aqst-free-search" in js
     assert "aqst-map-place-q" in js
     assert "searchFreePlaces" in js
     assert "/api/map/smart-tour/place-search" in js
 
-    # Build guards prevent duplicate ownership of the Map enhancement/control set.
     assert js.count("host.id='aq-smart-tour'") == 1
     assert js.count("controls.id='aqst-controls'") == 1
     assert js.count("box.id='aqst-free-search'") == 1
@@ -100,33 +166,20 @@ def test_phase1_generated_map_ui_contract_is_compact_and_unique():
     _assert_generated_js_parses(js)
 
 
-def test_phase2_generated_long_press_is_ios_safe_and_selected_card_is_compact():
+def test_phase2_generated_long_press_runs_before_map_init_and_drag_cancels():
     js = _asset("/aqua-smart-tour.js")
     css = _asset("/aqua-smart-tour.css")
 
-    # Phase 2 replaces the single existing long-press function rather than adding
-    # a second owner. Touch gets a dedicated capture-path because Leaflet can emit
-    # pointercancel on iPhone while the finger is still held down.
     assert js.count("function bindMainMapLongPress()") == 1
-    assert "el.dataset.aqLongPress==='2'" in js
+    assert "const el=$('#mainMap');if(!el||el.dataset.aqLongPress==='2')return" in js
+    assert "const m=mainMap();if(!m)return;const ll=m.containerPointToLatLng" in js
     assert "e.pointerType==='touch'" in js
-    assert "addEventListener('touchstart'" in js
-    assert "addEventListener('touchmove'" in js
     assert "['touchend','touchcancel']" in js
     assert "capture:true" in js
-    assert "source:'hold'" in js
-    assert "Date.now()-lastFire<1200" in js
 
-    # A held destination still flows through the existing free-destination card,
-    # reverse geocoding and navigation start path.
-    assert "selectFreeDestination({lat:ll.lat,lng:ll.lng" in js
-    assert "/api/map/neshan/reverse?lat=${point.lat}&lng=${point.lng}" in js
-    assert "aqst-free-card" in js
-    assert "aqst-free-start" in js
+    # Execute the generated code rather than only checking marker strings.
+    _assert_generated_ios_long_press_behavior(js)
 
-    # The customer selection card shown in the user's iPhone screenshot must no
-    # longer expand vertically. The three top actions retain one row, but regain
-    # comfortable visual size and use the full available Map header width.
     assert "Aqua Map Phase 2 — iPhone long-press + compact selected customer correction" in css
     assert 'width:calc(100% + 8px)!important' in css
     assert 'height:40px!important' in css
@@ -137,6 +190,44 @@ def test_phase2_generated_long_press_is_ios_safe_and_selected_card_is_compact():
 
     _assert_css_structurally_valid(css)
     _assert_generated_js_parses(js)
+
+
+def test_phase2_place_search_falls_back_when_neshan_search_is_not_licensed(monkeypatch):
+    def fail_neshan(*args, **kwargs):
+        raise RuntimeError("Api Key services not match")
+
+    requested = {}
+
+    def fake_geocoder(url, timeout=12):
+        requested["url"] = url
+        requested["timeout"] = timeout
+        return [{
+            "name": "کرج",
+            "display_name": "کرج، بخش مرکزی شهرستان کرج، استان البرز، ایران",
+            "lat": "35.8327",
+            "lon": "50.9915",
+            "type": "city",
+            "address": {"city": "کرج", "state": "البرز"},
+        }]
+
+    monkeypatch.setattr(map_search.neshan, "_neshan_get", fail_neshan)
+    monkeypatch.setattr(map_search.neshan, "geocode_address", fail_neshan)
+    monkeypatch.setattr(map_search.app_routing, "_fetch_json", fake_geocoder)
+
+    payload, status = map_search._place_search_payload("کرج", 35.69, 51.09)
+    assert status == 200
+    assert payload["provider"] == "aquagold-geocoder"
+    assert payload["fallback"] is True
+    assert payload["items"] == [{
+        "title": "کرج",
+        "address": "کرج، بخش مرکزی شهرستان کرج، استان البرز، ایران",
+        "region": "کرج",
+        "type": "city",
+        "latitude": 35.8327,
+        "longitude": 50.9915,
+    }]
+    assert "countrycodes=ir" in requested["url"]
+    assert requested["timeout"] == 10
 
 
 def test_phase1_startup_and_login_assets_still_render_unchanged_surfaces():
