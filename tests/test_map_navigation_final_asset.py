@@ -45,10 +45,12 @@ def test_final_map_navigation_css_is_compact_and_mobile_safe():
     css = _asset('/aqua-smart-tour.css')
 
     assert 'Aqua final Map/Navigation guard — PR29 20260909' in css
+    assert 'Aqua map compact CSS lock — PR29 20260909' in css
     assert '.aq-map-compact-actions' in css
     assert 'grid-template-columns:repeat(3,minmax(0,1fr))' in css
     assert '#aq-smart-tour.aq-map-ui-compact .aqst-searchbar input' in css
     assert 'height:40px!important' in css
+    assert 'height:35px!important' in css
     assert '#aqst-nav .aqst-next-strip{display:none!important}' in css
     assert '#8b2cff' in css
     assert '#aqst-free-card:not([hidden])' in css
