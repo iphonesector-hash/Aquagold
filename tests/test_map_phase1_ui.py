@@ -93,7 +93,7 @@ function mainMap(){{ return map; }}
 function esc(v){{ return String(v??''); }}
 function startNavigation(point){{ started=point; }}
 function selectFreeDestination(point){{ selected.push(point);renderFreeCard(point); }}
-global.navigator={{vibrate(){{}}}};
+Object.defineProperty(globalThis,'navigator',{{value:{{vibrate(){{}}}},configurable:true}});
 {bind_fn}
 {card_fn}
 
