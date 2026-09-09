@@ -18,20 +18,30 @@ function toast(msg){if(typeof window.alert==='function')window.alert(msg)}
 function setBusy(btn,busy,label){if(!btn)return;if(busy){btn.dataset.oldText=btn.textContent;btn.disabled=true;btn.textContent=label||'در حال محاسبه…'}else{btn.disabled=false;if(btn.dataset.oldText)btn.textContent=btn.dataset.oldText}}
 
 function buildUI(mapEl){if($('#aq-smart-tour')||!mapEl)return;
+ const frame=document.createElement('div');frame.className='aq-map-frame';mapEl.parentNode.insertBefore(frame,mapEl);frame.appendChild(mapEl);
+ const workspace=document.createElement('div');workspace.id='aqst-map-workspace';workspace.innerHTML=`
+  <div class="aqst-map-float-stack">
+   <button type="button" id="aqst-map-tools-toggle" class="aqst-map-float-btn" aria-controls="aqst-map-tools-sheet" aria-expanded="false"><span>☷</span><b>ابزار نقشه</b></button>
+   <button type="button" id="aqst-special-toggle" class="aqst-map-float-btn" aria-controls="aqst-special-sheet" aria-expanded="false"><span>★</span><b>موقعیت‌های خاص</b><i id="aqst-special-count">۰</i></button>
+  </div>
+  <section id="aqst-map-tools-sheet" class="aqst-map-sheet" data-open="false" aria-hidden="true"><div class="aqst-map-sheet-head"><b>ابزار نقشه</b><button type="button" class="aqst-map-sheet-close" aria-label="بستن ابزار نقشه">×</button></div><div id="aqst-map-tools-content"></div></section>
+  <section id="aqst-special-sheet" class="aqst-map-sheet" data-open="false" aria-hidden="true"><div class="aqst-map-sheet-head"><b>موقعیت‌های خاص</b><button type="button" class="aqst-map-sheet-close" aria-label="بستن موقعیت‌های خاص">×</button></div><button type="button" id="aqst-save-current-special" class="aqst-special-save-current">＋ ذخیره نقطه انتخاب‌شده</button><div id="aqst-special-list"></div></section>
+  <section id="aqst-special-editor" class="aqst-map-sheet aqst-special-editor" data-open="false" aria-hidden="true"><div class="aqst-map-sheet-head"><b id="aqst-special-editor-title">ذخیره موقعیت</b><button type="button" class="aqst-map-sheet-close" aria-label="بستن ویرایشگر">×</button></div><label>نام موقعیت *<input id="aqst-special-name" maxlength="80" autocomplete="off" placeholder="مثلاً بانک ملت فردیس"></label><label>آدرس / توضیح کوتاه<input id="aqst-special-address" maxlength="280" autocomplete="off" placeholder="اختیاری"></label><div id="aqst-special-coordinates" class="aqst-special-coordinates" aria-live="polite"></div><button type="button" id="aqst-special-save-go">ذخیره</button></section>`;
+ frame.appendChild(workspace);
  const host=document.createElement('div');host.id='aq-smart-tour';host.innerHTML=`
   <div class="aqst-search">
    <div class="aqst-searchbar"><input id="aqst-customer-search" autocomplete="off" inputmode="search" placeholder="جست‌وجوی مشتری: نام، شماره یا آدرس…"><button class="aqst-iconbtn" id="aqst-locate" type="button" aria-label="موقعیت من">⌖</button></div>
    <div class="aqst-results" id="aqst-search-results" hidden></div>
    <div class="aqst-selected" id="aqst-selected" hidden></div>
   </div>`;
- mapEl.parentNode.insertBefore(host,mapEl);
- const frame=document.createElement('div');frame.className='aq-map-frame';mapEl.parentNode.insertBefore(frame,mapEl);frame.appendChild(mapEl);
+ $('#aqst-map-tools-content',workspace).appendChild(host);
  const controls=document.createElement('div');controls.id='aqst-controls';controls.innerHTML=`
   <div class="aqst-toolbar"><div class="aqst-mode"><button type="button" data-mode="car" class="active">🚗 خودرو</button><button type="button" data-mode="walking">🚶 پیاده</button></div><button type="button" id="aqst-tour" class="aqst-tourbtn">✦ تور امروز</button></div>
   <div class="aqst-legend"><span><i class="aqst-dot green"></i> موقعیت دقیق و تأییدشده</span><span><i class="aqst-dot red"></i> موقعیت تقریبی از آدرس</span><span><i class="aqst-dot orange"></i> موقعیت/مسیر پیدا نشد</span><span>⏱ ETA خودرو با ترافیک نشان</span></div>
   <div class="aqst-notice" id="aqst-notice" hidden></div><div id="aqst-tour-output"></div>`;
- frame.insertAdjacentElement('afterend',controls);
+ $('#aqst-map-tools-content',workspace).appendChild(controls);
  createFixModal();createNav();bindUI();
+ if(typeof aqSetupNormalMapWorkspace==='function')aqSetupNormalMapWorkspace();
  setTimeout(()=>mainMap()?.invalidateSize?.(),80);
 }
 function bindUI(){
@@ -77,8 +87,8 @@ async function onNavPosition(p){if(!ST.nav.active)return;const pos={lat:p.coords
 async function reroute(pos){if(!ST.nav.active||!ST.nav.target)return;try{const route=await fetchRoute(pos,ST.nav.target);if(!route.points?.length)return;ST.nav.route=route;ST.nav.stepIndex=0;ST.nav.line?.setLatLngs(route.points);ST.nav.map?.fitBounds(L.latLngBounds(route.points),{padding:[35,35]});speak('مسیر دوباره محاسبه شد');updateInstruction(false)}catch{}}
 async function stopNavigation(){if(ST.nav.watch!=null){navigator.geolocation.clearWatch(ST.nav.watch);ST.nav.watch=null}try{await ST.nav.wake?.release?.()}catch{}ST.nav.wake=null;ST.nav.active=false;ST.nav.arrived=false;$('#aqst-nav').hidden=true;try{ST.nav.map?.remove()}catch{}ST.nav.map=null;try{speechSynthesis?.cancel?.()}catch{}if(ST.pendingTourChange){$('#aqst-update-banner')?.setAttribute('hidden','');await planTour(false)}}
 
-function enhance(){const mapEl=$('#mainMap');if(!mapEl)return;buildUI(mapEl)}
+function enhance(){const mapEl=$('#mainMap');if(!mapEl||!isMapPageVisible())return;buildUI(mapEl)}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',enhance,{once:true});else enhance();
 const obs=new MutationObserver(()=>enhance());obs.observe(document.documentElement,{childList:true,subtree:true});
-setTimeout(enhance,300);setTimeout(enhance,1200);
+window.addEventListener('aquagold:map-ready',enhance);
 })();

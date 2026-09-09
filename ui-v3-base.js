@@ -170,7 +170,7 @@ function app(){return{
     this.mainMarkers.forEach(m=>m.remove());this.mainMarkers=[];let pts=[];
     for(let c of this.customers.filter(x=>x.latitude&&x.longitude)){let label=c.map_label||c.name,html=`<div dir="rtl"><b>${this.escapeHtml(label)}</b><br>${this.escapeHtml((c.phones||[]).join(' • '))}<br>${this.escapeHtml(c.address||'')}</div>`,m=L.marker([c.latitude,c.longitude],{icon:this.mapIcon()}).bindPopup(html).addTo(this.mainMap);this.mainMarkers.push(m);pts.push([c.latitude,c.longitude])}
     if(pts.length)this.mainMap.fitBounds(L.latLngBounds(pts),{padding:[50,50],maxZoom:15});
-    setTimeout(()=>this.mainMap.invalidateSize(),80)
+    setTimeout(()=>{this.mainMap.invalidateSize();window.dispatchEvent(new CustomEvent('aquagold:map-ready'))},80)
   },
   mapIcon(){return L.divIcon({className:'aq-map-marker',html:'<span aria-hidden="true"></span>',iconSize:[28,36],iconAnchor:[14,34],popupAnchor:[0,-30]})},
   escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))},

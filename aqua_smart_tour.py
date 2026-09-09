@@ -12,6 +12,7 @@ import math
 import os
 import re
 from datetime import datetime, timedelta
+from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from flask import jsonify, request, send_from_directory
@@ -22,6 +23,7 @@ import aqua_neshan_preview as neshan
 TEHRAN = ZoneInfo("Asia/Tehran")
 MAX_TOUR_JOBS = 12
 DEFAULT_SERVICE_MINUTES = 40
+MAX_SPECIAL_LOCATIONS = 100
 
 _FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _WEEKDAYS = {
@@ -322,6 +324,145 @@ def _route_legs(ordered, origin, mode):
 
 def _public_job(job):
     return {k: v for k, v in job.items() if k != "_schedule"}
+
+
+def _special_locations_key(user_id=None):
+    value = user_id
+    if value is None:
+        value = (getattr(request, "current_user", {}) or {}).get("user_id")
+    value = str(value or "").strip()
+    if not value:
+        raise RuntimeError("authenticated user is required")
+    return f"map_special_locations:{value}"
+
+
+def _special_coordinate(value, label, minimum, maximum):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise app_v3.ValidationError(f"{label} نامعتبر است") from None
+    if not math.isfinite(number) or not minimum <= number <= maximum:
+        raise app_v3.ValidationError(f"{label} نامعتبر است")
+    return number
+
+
+def _clean_special_location(raw):
+    if not isinstance(raw, dict):
+        return None
+    try:
+        location_id = str(UUID(str(raw.get("id") or "")))
+        name = app_v3.valid_text(raw.get("name"), "نام موقعیت", required=True, max_length=80)
+        address = app_v3.valid_text(raw.get("address"), "آدرس", max_length=280) or ""
+        lat = _special_coordinate(raw.get("lat"), "عرض جغرافیایی", -90, 90)
+        lng = _special_coordinate(raw.get("lng"), "طول جغرافیایی", -180, 180)
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return {"id": location_id, "name": name, "address": address, "lat": lat, "lng": lng}
+
+
+def _special_location_payload(raw, existing=None):
+    if not isinstance(raw, dict):
+        raise app_v3.ValidationError("اطلاعات موقعیت معتبر نیست")
+    current = existing or {}
+    name = app_v3.valid_text(raw.get("name", current.get("name")), "نام موقعیت", required=True, max_length=80)
+    address = app_v3.valid_text(raw.get("address", current.get("address")), "آدرس", max_length=280) or ""
+    if existing:
+        lat = current["lat"]
+        lng = current["lng"]
+    else:
+        lat = _special_coordinate(raw.get("lat"), "عرض جغرافیایی", -90, 90)
+        lng = _special_coordinate(raw.get("lng"), "طول جغرافیایی", -180, 180)
+    return {"id": str(current.get("id") or uuid4()), "name": name, "address": address, "lat": lat, "lng": lng}
+
+
+def _read_special_locations(cur, key, lock=False):
+    cur.execute("select value from app_settings where key=%s" + (" for update" if lock else ""), (key,))
+    row = cur.fetchone()
+    value = (row or {}).get("value") if row else None
+    if isinstance(value, dict):
+        value = value.get("items")
+    if not isinstance(value, list):
+        return []
+    items = []
+    seen = set()
+    for raw in value[:MAX_SPECIAL_LOCATIONS]:
+        item = _clean_special_location(raw)
+        if not item or item["id"] in seen:
+            continue
+        seen.add(item["id"])
+        items.append(item)
+    return items
+
+
+def _lock_special_locations(cur, key):
+    cur.execute("select pg_advisory_xact_lock(hashtext(%s))", (key,))
+
+
+def _write_special_locations(cur, key, items):
+    cur.execute(
+        """insert into app_settings(key,value,updated_at) values(%s,%s,now())
+           on conflict(key) do update set value=excluded.value,updated_at=now()""",
+        (key, app_v3.Jsonb({"version": 1, "items": items[:MAX_SPECIAL_LOCATIONS]})),
+    )
+
+
+@app_v3.app.get("/api/map/special-locations")
+@app_v3.roles_required("technician")
+def special_locations_list():
+    key = _special_locations_key()
+    with app_v3.get_db() as db, db.cursor() as cur:
+        items = _read_special_locations(cur, key)
+    return jsonify({"items": items, "count": len(items)})
+
+
+@app_v3.app.post("/api/map/special-locations")
+@app_v3.roles_required("technician")
+def special_locations_create():
+    item = _special_location_payload(request.get_json(silent=True))
+    key = _special_locations_key()
+    with app_v3.get_db() as db, db.cursor() as cur:
+        _lock_special_locations(cur, key)
+        items = _read_special_locations(cur, key, lock=True)
+        if len(items) >= MAX_SPECIAL_LOCATIONS:
+            return jsonify({"error": "حداکثر ۱۰۰ موقعیت خاص قابل ذخیره است"}), 409
+        items.insert(0, item)
+        _write_special_locations(cur, key, items)
+        app_v3.audit(cur, "map_special_location", item["id"], "create", after=item)
+    return jsonify(item), 201
+
+
+@app_v3.app.patch("/api/map/special-locations/<uuid:location_id>")
+@app_v3.roles_required("technician")
+def special_locations_update(location_id):
+    key = _special_locations_key()
+    with app_v3.get_db() as db, db.cursor() as cur:
+        _lock_special_locations(cur, key)
+        items = _read_special_locations(cur, key, lock=True)
+        index = next((i for i, item in enumerate(items) if item["id"] == str(location_id)), -1)
+        if index < 0:
+            return jsonify({"error": "موقعیت پیدا نشد"}), 404
+        before = dict(items[index])
+        item = _special_location_payload(request.get_json(silent=True), existing=before)
+        items[index] = item
+        _write_special_locations(cur, key, items)
+        app_v3.audit(cur, "map_special_location", item["id"], "update", before=before, after=item)
+    return jsonify(item)
+
+
+@app_v3.app.delete("/api/map/special-locations/<uuid:location_id>")
+@app_v3.roles_required("technician")
+def special_locations_delete(location_id):
+    key = _special_locations_key()
+    with app_v3.get_db() as db, db.cursor() as cur:
+        _lock_special_locations(cur, key)
+        items = _read_special_locations(cur, key, lock=True)
+        before = next((item for item in items if item["id"] == str(location_id)), None)
+        if not before:
+            return jsonify({"error": "موقعیت پیدا نشد"}), 404
+        items = [item for item in items if item["id"] != str(location_id)]
+        _write_special_locations(cur, key, items)
+        app_v3.audit(cur, "map_special_location", str(location_id), "delete", before=before)
+    return jsonify({"ok": True, "id": str(location_id)})
 
 
 @app_v3.app.get("/api/map/smart-tour/jobs")

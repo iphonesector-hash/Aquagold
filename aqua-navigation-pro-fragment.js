@@ -18,7 +18,54 @@ function setupFreeMapTools(){
  $('#aqst-map-place-go').addEventListener('click',searchFreePlaces);
  $('#aqst-map-place-q').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchFreePlaces()}});
  $('#aqst-map-place-q').addEventListener('input',()=>{clearTimeout(ST.nav.freeSearchTimer);const q=$('#aqst-map-place-q').value.trim();if(q.length>=3)ST.nav.freeSearchTimer=setTimeout(searchFreePlaces,420)});
- setTimeout(bindMainMapLongPress,350);setTimeout(bindMainMapLongPress,1200);
+ bindMainMapLongPress();setTimeout(bindMainMapLongPress,350);setTimeout(bindMainMapLongPress,1200);
+}
+
+function aqNormalMapSection(){return $('#mainMap')?.closest('section')||null}
+function aqInvalidateNormalMap(){requestAnimationFrame(()=>{try{mainMap()?.invalidateSize?.()}catch{}});setTimeout(()=>{try{mainMap()?.invalidateSize?.()}catch{}},320)}
+function aqSetNormalMapPanel(id,open){
+ const root=$('#aqst-map-workspace'),section=aqNormalMapSection();if(!root||!section)return;
+ for(const panel of $$('.aqst-map-sheet',root)){const active=!!open&&panel.id===id;panel.dataset.open=active?'true':'false';panel.setAttribute('aria-hidden',active?'false':'true')}
+ for(const button of $$('.aqst-map-float-btn',root))button.setAttribute('aria-expanded',open&&button.getAttribute('aria-controls')===id?'true':'false');
+ section.classList.toggle('aqst-map-tools-open',!!open&&id==='aqst-map-tools-sheet');aqInvalidateNormalMap();
+}
+function aqToggleNormalMapPanel(id){const panel=$('#'+id);if(panel)aqSetNormalMapPanel(id,panel.dataset.open!=='true')}
+function aqSpecialLocations(){return Array.isArray(ST.nav.specialLocations)?ST.nav.specialLocations:[]}
+function aqRenderSpecialCount(){const badge=$('#aqst-special-count');if(badge)badge.textContent=new Intl.NumberFormat('fa-IR').format(aqSpecialLocations().length)}
+function aqSpecialMarkerIcon(){return L.divIcon({className:'aqst-special-pin',html:'<span>★</span>',iconSize:[34,40],iconAnchor:[17,36]})}
+function aqSelectSpecialLocation(item){if(!item)return;selectFreeDestination({lat:Number(item.lat),lng:Number(item.lng),name:item.name,address:item.address||'',source:'special'});aqSetNormalMapPanel('aqst-map-tools-sheet',true)}
+function aqRenderSpecialMarkers(){
+ const map=mainMap();if(!map||!window.L)return;ST.nav.specialMarkers=ST.nav.specialMarkers||[];
+ for(const marker of ST.nav.specialMarkers){try{map.removeLayer(marker)}catch{}}ST.nav.specialMarkers=[];
+ for(const item of aqSpecialLocations()){try{const marker=L.marker([item.lat,item.lng],{icon:aqSpecialMarkerIcon(),zIndexOffset:850}).addTo(map);marker.bindTooltip(esc(item.name),{direction:'top',offset:[0,-28]});marker.on('click',()=>aqSelectSpecialLocation(item));ST.nav.specialMarkers.push(marker)}catch{}}
+}
+function aqRenderSpecialLocations(){
+ const out=$('#aqst-special-list');if(!out)return;const items=aqSpecialLocations();
+ if(!items.length){out.innerHTML='<div class="aqst-special-empty">هنوز موقعیتی ذخیره نشده.<small>روی نقشه حدود یک ثانیه نگه دار و «ذخیره موقعیت» را بزن.</small></div>';return}
+ out.innerHTML=items.map(item=>`<article class="aqst-special-row" data-id="${esc(item.id)}"><button type="button" class="aqst-special-route"><span class="aqst-special-star">★</span><span><b>${esc(item.name)}</b><small>${esc(item.address||`${Number(item.lat).toFixed(5)}, ${Number(item.lng).toFixed(5)}`)}</small></span></button><div class="aqst-special-row-actions"><button type="button" class="aqst-special-edit" aria-label="ویرایش ${esc(item.name)}">✎</button><button type="button" class="aqst-special-delete" aria-label="حذف ${esc(item.name)}">×</button></div></article>`).join('');
+ $$('.aqst-special-row',out).forEach(row=>{const item=items.find(value=>String(value.id)===row.dataset.id);if(!item)return;row.querySelector('.aqst-special-route')?.addEventListener('click',()=>aqSelectSpecialLocation(item));row.querySelector('.aqst-special-edit')?.addEventListener('click',()=>aqOpenSpecialEditor(item,item.id));row.querySelector('.aqst-special-delete')?.addEventListener('click',()=>aqDeleteSpecialLocation(item))});
+}
+async function aqLoadSpecialLocations(force=false){
+ if(ST.nav.specialLoading||(!force&&ST.nav.specialLoaded))return;ST.nav.specialLoading=true;
+ try{const data=await api('/api/map/special-locations');ST.nav.specialLocations=Array.isArray(data.items)?data.items:[];ST.nav.specialLoaded=true}catch(e){ST.nav.specialLocations=aqSpecialLocations();if(force)toast(e.message||'موقعیت‌های خاص بارگذاری نشد')}
+ finally{ST.nav.specialLoading=false;aqRenderSpecialCount();aqRenderSpecialLocations();aqRenderSpecialMarkers()}
+}
+function aqOpenSpecialEditor(point,id=''){
+ point=point||ST.nav.freeDestination;if(!point)return toast('اول یک نقطه روی نقشه انتخاب کن');const editor=$('#aqst-special-editor');if(!editor)return;
+ editor.dataset.editId=id||'';editor.dataset.lat=String(point.lat);editor.dataset.lng=String(point.lng);$('#aqst-special-name').value=id?point.name||'':(point.name&&point.name!=='مقصد انتخابی روی نقشه'?point.name:'');$('#aqst-special-address').value=point.address||'';$('#aqst-special-editor-title').textContent=id?'ویرایش موقعیت خاص':'ذخیره موقعیت';$('#aqst-special-coordinates').textContent=`مختصات: ${Number(point.lat).toFixed(6)}، ${Number(point.lng).toFixed(6)}`;aqSetNormalMapPanel('aqst-special-editor',true);setTimeout(()=>$('#aqst-special-name')?.focus(),120)
+}
+async function aqPersistSpecialLocation(){
+ const editor=$('#aqst-special-editor'),button=$('#aqst-special-save-go');if(!editor||!button||button.disabled)return;const name=$('#aqst-special-name')?.value.trim(),address=$('#aqst-special-address')?.value.trim()||'',id=editor.dataset.editId||'';if(!name)return toast('نام موقعیت الزامی است');
+ button.disabled=true;try{const saved=await api(id?`/api/map/special-locations/${encodeURIComponent(id)}`:'/api/map/special-locations',{method:id?'PATCH':'POST',body:JSON.stringify({name,address,lat:Number(editor.dataset.lat),lng:Number(editor.dataset.lng)})});if(id){const index=aqSpecialLocations().findIndex(item=>String(item.id)===id);if(index>=0)ST.nav.specialLocations[index]=saved}else ST.nav.specialLocations=[saved,...aqSpecialLocations()];ST.nav.specialLoaded=true;aqRenderSpecialCount();aqRenderSpecialLocations();aqRenderSpecialMarkers();aqSetNormalMapPanel('aqst-special-sheet',true);toast(id?'موقعیت ویرایش شد':'موقعیت ذخیره شد')}catch(e){toast(e.message||'ذخیره موقعیت انجام نشد')}finally{button.disabled=false}
+}
+async function aqDeleteSpecialLocation(item){
+ if(!item?.id||!window.confirm(`موقعیت «${item.name}» حذف شود؟`))return;
+ try{await api(`/api/map/special-locations/${encodeURIComponent(item.id)}`,{method:'DELETE'});ST.nav.specialLocations=aqSpecialLocations().filter(value=>String(value.id)!==String(item.id));aqRenderSpecialCount();aqRenderSpecialLocations();aqRenderSpecialMarkers()}catch(e){toast(e.message||'حذف موقعیت انجام نشد')}
+}
+function aqSetupNormalMapWorkspace(){
+ const root=$('#aqst-map-workspace'),section=aqNormalMapSection();if(!root||!section||root.dataset.aqBound==='1')return;root.dataset.aqBound='1';section.classList.add('aqst-phase4c-ready');
+ $('#aqst-map-tools-toggle')?.addEventListener('click',()=>aqToggleNormalMapPanel('aqst-map-tools-sheet'));$('#aqst-special-toggle')?.addEventListener('click',()=>{aqLoadSpecialLocations();aqToggleNormalMapPanel('aqst-special-sheet')});$('#aqst-save-current-special')?.addEventListener('click',()=>aqOpenSpecialEditor(ST.nav.freeDestination));$('#aqst-special-save-go')?.addEventListener('click',aqPersistSpecialLocation);$$('.aqst-map-sheet-close',root).forEach(button=>button.addEventListener('click',()=>aqSetNormalMapPanel('',false)));aqLoadSpecialLocations();
+ if(!window.__aqNormalMapResizeBound){window.__aqNormalMapResizeBound=true;window.addEventListener('resize',()=>{if(isMapPageVisible())aqInvalidateNormalMap()},{passive:true})}aqInvalidateNormalMap();
 }
 
 async function refreshVoiceCapability(){try{const s=await api('/api/aqua-ai/settings');ST.nav.voiceConfigured=!!s.elevenlabs_api_key_configured}catch{ST.nav.voiceConfigured=false}}
@@ -44,8 +91,9 @@ function bindMainMapLongPress(){
 }
 
 function renderFreeCard(point){
- const card=$('#aqst-free-card');if(!card)return;card.hidden=false;card.innerHTML=`<div class="aqst-free-card-copy"><b>${esc(point.name||'مقصد انتخابی')}</b><small>${esc(point.address||`${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`)}</small></div><div class="aqst-free-card-actions"><button type="button" class="aqst-free-start">شروع مسیر</button><button type="button" class="aqst-free-clear">حذف</button></div>`;
+ const card=$('#aqst-free-card');if(!card)return;card.hidden=false;card.innerHTML=`<div class="aqst-free-card-copy"><b>${esc(point.name||'مقصد انتخابی')}</b><small>${esc(point.address||`${point.lat.toFixed(6)}, ${point.lng.toFixed(6)}`)}</small></div><div class="aqst-free-card-actions"><button type="button" class="aqst-free-start">شروع مسیر</button><button type="button" class="aqst-free-save">ذخیره موقعیت</button><button type="button" class="aqst-free-clear">حذف</button></div>`;
  card.querySelector('.aqst-free-start').addEventListener('click',()=>startNavigation({name:point.name||point.address||'مقصد انتخابی',lat:point.lat,lng:point.lng,quality:'exact',free:true}));
+ card.querySelector('.aqst-free-save').addEventListener('click',()=>aqOpenSpecialEditor(point));
  card.querySelector('.aqst-free-clear').addEventListener('click',clearFreeDestination);
 }
 
