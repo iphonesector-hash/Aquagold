@@ -201,12 +201,27 @@ def _patch_js(source: str) -> str:
     return source
 
 
+def _patch_html(source: str) -> str:
+    """Keep the old bottom-nav cleanup but stop observing every map tile/marker."""
+    old = "const observer=new MutationObserver(()=>{removeBottomUtilities();forceFreshLoader()});\n  observer.observe(document.documentElement,{childList:true,subtree:true});"
+    new = "const bottomNav=document.querySelector('.bottom-nav');\n  if(bottomNav){\n    const observer=new MutationObserver(removeBottomUtilities);\n    observer.observe(bottomNav,{childList:true});\n  }"
+    if old in source:
+        source = source.replace(old, new, 1)
+    return source
+
+
 @app_v3.app.after_request
 def aqua_map_stability_assets(response):
     try:
         if response.status_code != 200:
             return response
-        if request.path == "/aqua-smart-tour.js":
+        if request.path == "/":
+            response.direct_passthrough = False
+            html = _patch_html(response.get_data(as_text=True))
+            response.set_data(html)
+            response.headers["Content-Length"] = str(len(response.get_data()))
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+        elif request.path == "/aqua-smart-tour.js":
             response.direct_passthrough = False
             source = _patch_js(response.get_data(as_text=True))
             response.set_data(source)
