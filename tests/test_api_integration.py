@@ -19,10 +19,17 @@ def app_module():
     with app_v3.get_db() as db, db.cursor() as cur:
         cur.execute("truncate table api_idempotency,auth_sessions,audit_log,invoice_items,invoices,products,company_settlements,expenses,service_items,service_visits,customer_phones,customers_v2 restart identity cascade")
         cur.execute("delete from users")
+        cur.execute("delete from app_settings where key like 'map_special_locations:%'")
         cur.execute(
             """insert into users(username,password_hash,first_name,last_name,role,active)
-               values(%s,%s,'مدیر','آزمایش','superadmin',true),(%s,%s,'کاربر','خواندنی','viewer',true)""",
-            ("admin", generate_password_hash("A-strong-test-password"), "viewer", generate_password_hash("Viewer-test-password")),
+               values(%s,%s,'مدیر','آزمایش','superadmin',true),
+                     (%s,%s,'کاربر','خواندنی','viewer',true),
+                     (%s,%s,'فنی','آزمایش','technician',true)""",
+            (
+                "admin", generate_password_hash("A-strong-test-password"),
+                "viewer", generate_password_hash("Viewer-test-password"),
+                "technician", generate_password_hash("Technician-test-password"),
+            ),
         )
     import app as entry
     entry.app.config.update(TESTING=True)
@@ -149,3 +156,51 @@ def test_validation_rejects_bad_phone_and_coordinates(app_module):
     )
     assert malformed.status_code == 400
     assert malformed.is_json
+
+
+def test_special_locations_persist_validate_and_isolate_users(app_module):
+    admin = app_module.app.test_client()
+    admin_csrf = login(admin)
+    created = admin.post(
+        "/api/map/special-locations",
+        headers={"X-CSRF-Token": admin_csrf, "Idempotency-Key": "0afe1d5a-3778-47c5-9c7c-ac694235ec81"},
+        json={"name": "بانک تست", "address": "فردیس", "lat": 35.72, "lng": 50.98},
+    )
+    assert created.status_code == 201, created.get_json()
+    item = created.get_json()
+    assert admin.get("/api/map/special-locations").get_json()["items"] == [item]
+
+    edited = admin.patch(
+        f"/api/map/special-locations/{item['id']}",
+        headers={"X-CSRF-Token": admin_csrf},
+        json={"name": "بانک تست ویرایش", "address": "فلکه سوم", "lat": 1, "lng": 2},
+    )
+    assert edited.status_code == 200, edited.get_json()
+    assert edited.get_json()["name"] == "بانک تست ویرایش"
+    assert edited.get_json()["lat"] == item["lat"]
+    assert edited.get_json()["lng"] == item["lng"]
+
+    bad = admin.post(
+        "/api/map/special-locations",
+        headers={"X-CSRF-Token": admin_csrf},
+        json={"name": "", "lat": 120, "lng": 51},
+    )
+    assert bad.status_code == 400
+
+    technician = app_module.app.test_client()
+    technician_csrf = login(technician, "technician", "Technician-test-password")
+    assert technician.get("/api/map/special-locations").get_json()["items"] == []
+    other = technician.post(
+        "/api/map/special-locations",
+        headers={"X-CSRF-Token": technician_csrf},
+        json={"name": "انبار", "lat": 35.8, "lng": 50.9},
+    )
+    assert other.status_code == 201, other.get_json()
+    assert len(technician.get("/api/map/special-locations").get_json()["items"]) == 1
+    assert len(admin.get("/api/map/special-locations").get_json()["items"]) == 1
+
+    removed = admin.delete(
+        f"/api/map/special-locations/{item['id']}", headers={"X-CSRF-Token": admin_csrf}
+    )
+    assert removed.status_code == 200
+    assert admin.get("/api/map/special-locations").get_json()["items"] == []
