@@ -52,6 +52,9 @@ import bale_inbox_guard  # noqa: E402,F401
 # Preview only: mirror live new/review Bale jobs read-only from main when configured.
 import aqua_preview_bale_sync  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
+# Final map-page stability patch is registered before the map injectors so its
+# after_request handler runs LAST (Flask executes handlers in reverse order).
+import aqua_map_stability_fix  # noqa: E402,F401
 # Time-window-aware Bale tour + in-app Neshan navigation, scoped to the Map page.
 import aqua_smart_tour  # noqa: E402,F401
 # Prefer Neshan's official VRP/logistics solver for time-window tours; retain the
@@ -72,6 +75,9 @@ import aqua_navigation_polish  # noqa: E402,F401
 import aqua_navigation_gps_fix  # noqa: E402,F401
 # Retain Neshan maneuver metadata and serve the professional Aria navigation UI.
 import aqua_navigation_pro  # noqa: E402,F401
+# Detailed route geometry is applied after the professional normalizer so road
+# polylines prefer per-step geometry over a simplified overview line.
+import aqua_route_geometry_fix  # noqa: E402,F401
 # Heading-up/pitched Neshan drive view + free map search/long-press destinations.
 import aqua_navigation_drive  # noqa: E402,F401
 # Drive adapter registers its own search handler, so lock the fallback after it.
