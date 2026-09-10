@@ -24,6 +24,7 @@ TEHRAN = ZoneInfo("Asia/Tehran")
 MAX_TOUR_JOBS = 12
 DEFAULT_SERVICE_MINUTES = 40
 MAX_SPECIAL_LOCATIONS = 100
+SPECIAL_LOCATION_EMOJIS = ("⭐", "🏦", "🏪", "🏠", "🏢", "📦", "🔧", "💧", "🅿️", "☕", "🏥", "📍")
 
 _FA_DIGITS = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
 _WEEKDAYS = {
@@ -346,6 +347,15 @@ def _special_coordinate(value, label, minimum, maximum):
     return number
 
 
+def _special_emoji(value, *, strict=True):
+    emoji = str(value or "⭐").strip()
+    if emoji in SPECIAL_LOCATION_EMOJIS:
+        return emoji
+    if strict:
+        raise app_v3.ValidationError("نشانه موقعیت معتبر نیست")
+    return "⭐"
+
+
 def _clean_special_location(raw):
     if not isinstance(raw, dict):
         return None
@@ -355,9 +365,10 @@ def _clean_special_location(raw):
         address = app_v3.valid_text(raw.get("address"), "آدرس", max_length=280) or ""
         lat = _special_coordinate(raw.get("lat"), "عرض جغرافیایی", -90, 90)
         lng = _special_coordinate(raw.get("lng"), "طول جغرافیایی", -180, 180)
+        emoji = _special_emoji(raw.get("emoji"), strict=False)
     except (ValueError, TypeError, AttributeError):
         return None
-    return {"id": location_id, "name": name, "address": address, "lat": lat, "lng": lng}
+    return {"id": location_id, "name": name, "address": address, "emoji": emoji, "lat": lat, "lng": lng}
 
 
 def _special_location_payload(raw, existing=None):
@@ -366,13 +377,14 @@ def _special_location_payload(raw, existing=None):
     current = existing or {}
     name = app_v3.valid_text(raw.get("name", current.get("name")), "نام موقعیت", required=True, max_length=80)
     address = app_v3.valid_text(raw.get("address", current.get("address")), "آدرس", max_length=280) or ""
+    emoji = _special_emoji(raw.get("emoji", current.get("emoji", "⭐")))
     if existing:
         lat = current["lat"]
         lng = current["lng"]
     else:
         lat = _special_coordinate(raw.get("lat"), "عرض جغرافیایی", -90, 90)
         lng = _special_coordinate(raw.get("lng"), "طول جغرافیایی", -180, 180)
-    return {"id": str(current.get("id") or uuid4()), "name": name, "address": address, "lat": lat, "lng": lng}
+    return {"id": str(current.get("id") or uuid4()), "name": name, "address": address, "emoji": emoji, "lat": lat, "lng": lng}
 
 
 def _read_special_locations(cur, key, lock=False):

@@ -55,9 +55,44 @@ def test_phase4b_css_makes_map_edge_to_edge_and_sheets_collapsible():
     assert "0 0 26px rgba(20,178,239,.14)" in css
     assert "#aqst-nav.aqst-head-collapsed .aqst-navhead" in css
     assert "#aqst-nav.aqst-foot-collapsed .aqst-navfoot" in css
-    assert "top:var(--aqst-head-bottom,112px)!important" in css
+    assert "#aqst-nav #aqst-map-actions{top:calc(var(--aqst-head-bottom,112px) + 8px)!important" in css
     assert "bottom:var(--aqst-foot-clear,150px)!important" in css
     assert "@media(prefers-reduced-motion:reduce)" in css
+
+
+def test_navigation_removes_redundant_next_strip_and_trims_completed_route():
+    js = _asset("/aqua-smart-tour.js")
+
+    assert 'id="aqst-next-strip"' not in js
+    assert "function aqRemainingRoutePoints(route,projection)" in js
+    assert "function aqSyncRemainingRoute(route,projection)" in js
+    assert "aqSyncRemainingRoute(route,projection)" in js
+    assert "pts.slice(i+1)" in js
+    assert "'line-color':'#7c3aed'" in js
+    assert 'class="aqst-user-arrow"' in js
+
+    start = js.index("function aqRemainingRoutePoints(")
+    end = js.index("function aqSmoothHeading(", start)
+    helper = js[start:end]
+    script = f"""
+let updated=null;
+const ST={{nav:{{mapKind:'gl',map:{{getSource(){{return {{setData(value){{updated=value;}}}};}}}}}}}};
+{helper}
+const route={{points:[[35.70,50.90],[35.71,50.91],[35.72,50.92],[35.73,50.93]]}};
+const remaining=aqRemainingRoutePoints(route,{{i:1,lat:35.715,lng:50.915}});
+if(JSON.stringify(remaining)!==JSON.stringify([[35.715,50.915],[35.72,50.92],[35.73,50.93]]))throw new Error('completed route was not trimmed');
+aqSyncRemainingRoute(route,{{i:1,lat:35.715,lng:50.915}});
+const coordinates=updated.geometry.coordinates;
+if(JSON.stringify(coordinates[0])!==JSON.stringify([50.915,35.715]))throw new Error('remaining route does not start at marker');
+if(coordinates.some(value=>value[0]===50.90))throw new Error('old route trail remains visible');
+"""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "remaining-route-test.js"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run(
+            ["node", str(path)], check=False, capture_output=True, text=True, timeout=20
+        )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_phase4b_generated_javascript_stays_syntax_valid_and_startup_surfaces_render():
