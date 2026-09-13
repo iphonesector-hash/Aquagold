@@ -194,6 +194,32 @@ def _patch_js(source: str) -> str:
         _LIGHT_OBSERVER,
     )
 
+    source = source.replace(
+        "function drawSingle(route,origin,target){clearLayers(ST.singleLayers);",
+        "function drawSingle(route,origin,target){clearLayers(ST.singleLayers);clearLayers(ST.tourLayers);",
+        1,
+    )
+    source = source.replace(
+        "const out=$('#aqst-tour-output'),notice=$('#aqst-notice');clearLayers(ST.tourLayers);",
+        "const out=$('#aqst-tour-output'),notice=$('#aqst-notice');clearLayers(ST.singleLayers);clearLayers(ST.tourLayers);",
+        1,
+    )
+    source = source.replace(
+        "ST.nav.freeDestination=point;$('#aqst-free-results')?.setAttribute('hidden','');\n const m=mainMap();try{if(ST.nav.freeMarker)m?.removeLayer(ST.nav.freeMarker)}catch{}",
+        "ST.nav.freeDestination=point;$('#aqst-free-results')?.setAttribute('hidden','');\n try{clearLayers(ST.singleLayers)}catch{}\n const m=mainMap();try{if(ST.nav.freeMarker)m?.removeLayer(ST.nav.freeMarker)}catch{}",
+        1,
+    )
+    source = source.replace(
+        "prepareRouteModel(route);ST.nav.minimized=false;document.documentElement.classList.add('aqst-nav-fullscreen');",
+        "prepareRouteModel(route);try{clearLayers(ST.singleLayers)}catch{}ST.nav.minimized=false;document.documentElement.classList.add('aqst-nav-fullscreen');",
+        1,
+    )
+    source = source.replace(
+        "aqRemoveMainNavMini();const aqResume=$('#aqst-nav-resume');if(aqResume)aqResume.hidden=true;$('#aqst-nav').hidden=true;",
+        "aqRemoveMainNavMini();try{clearLayers(ST.singleLayers)}catch{}const aqResume=$('#aqst-nav-resume');if(aqResume)aqResume.hidden=true;$('#aqst-nav').hidden=true;",
+        1,
+    )
+
     marker = "\n/* Aqua Map final iPhone stability patch */\n"
     end = source.rfind("})();")
     if end >= 0:
