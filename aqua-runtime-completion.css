@@ -1,0 +1,7 @@
+/* Final requested mobile layout corrections; scoped and non-destructive. */
+#aqst-controls{position:relative!important;inset:auto!important;transform:none!important;z-index:3!important;width:100%!important;max-width:100%!important;margin:0 0 4px!important;padding:0!important;pointer-events:auto!important}
+.aq-map-frame>#aqst-controls{position:relative!important;left:auto!important;right:auto!important;top:auto!important;bottom:auto!important}
+#aqst-controls .aqst-toolbar{position:relative!important;inset:auto!important;width:100%!important;max-width:100%!important;margin:0!important;box-sizing:border-box!important}
+#expenseJalaliPicker,#expenseJalaliPicker *{box-sizing:border-box!important;max-width:100%!important}
+#expenseJalaliPicker select{width:100%!important;min-width:0!important;max-width:100%!important}
+@media(max-width:700px){#aqst-controls .aqst-toolbar{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:8px!important}.aqst-mode{width:100%!important;min-width:0!important}.aqst-tourbtn{width:100%!important}div[x-show="expenseEditOpen"] .card{width:calc(100vw - 24px)!important;max-width:calc(100vw - 24px)!important;min-width:0!important;margin:auto!important;padding:16px!important;box-sizing:border-box!important}div[x-show="expenseEditOpen"] .field{width:100%!important;max-width:100%!important;min-width:0!important;box-sizing:border-box!important}}
