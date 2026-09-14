@@ -14,11 +14,19 @@ from psycopg.types.json import Jsonb
 
 from app_v3 import app, get_db, limiter, roles_required, row_json, token_required
 from aquagold_validation import ValidationError, coordinates, text, uuid
+from aqua_map_address import format_geocode_results, normalize_persian_address
 
 
 GEOCODING_URL = os.getenv("GEOCODING_PROVIDER_URL", "https://nominatim.openstreetmap.org/search").rstrip("/")
 ROUTING_URL = os.getenv("ROUTING_PROVIDER_URL", "https://router.project-osrm.org").rstrip("/")
 PROVIDER_USER_AGENT = os.getenv("AQUAGOLD_MAP_USER_AGENT", "AquaGold-CRM/1.0")
+
+def geocode_provider(query, limit=3):
+    """Return bounded real provider results; confidence is omitted when unavailable."""
+    normalized = normalize_persian_address(query)
+    params = urllib.parse.urlencode({"q": normalized, "format": "jsonv2", "limit": min(max(limit, 1), 3), "countrycodes": "ir", "addressdetails": 1})
+    raw = _fetch_json(f"{GEOCODING_URL}?{params}")
+    return format_geocode_results(raw, lambda value: text(value, "نشانی نتیجه", max_length=1000), limit)
 
 
 def _fetch_json(url, timeout=12):
@@ -63,20 +71,13 @@ def geocode():
     if cached:
         return jsonify({"items": cached["response"], "provider": "cache"})
 
-    params = urllib.parse.urlencode({"q": query, "format": "jsonv2", "limit": 5, "countrycodes": "ir", "addressdetails": 1})
     try:
-        raw = _fetch_json(f"{GEOCODING_URL}?{params}")
+        provider_items = geocode_provider(query, limit=3)
     except Exception:
         app.logger.exception("geocoding_provider_failed")
         return jsonify({"error": "سرویس تبدیل آدرس موقتاً در دسترس نیست"}), 503
-    items = [
-        {
-            "display_name": text(item.get("display_name"), "نشانی نتیجه", max_length=1000),
-            "latitude": float(item["lat"]), "longitude": float(item["lon"]),
-            "type": item.get("type"), "importance": item.get("importance"),
-        }
-        for item in raw[:5] if item.get("lat") and item.get("lon")
-    ]
+    items = [{"display_name": item["formatted_address"], "latitude": item["latitude"],
+              "longitude": item["longitude"], "type": item.get("type")} for item in provider_items]
     with get_db() as db, db.cursor() as cur:
         cur.execute(
             """insert into geocode_cache(query_hash,normalized_query,response,expires_at)

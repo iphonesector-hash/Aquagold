@@ -40,6 +40,8 @@ import app_extras  # noqa: E402,F401
 import app_fixes  # noqa: E402,F401
 import app_commerce  # noqa: E402,F401
 import app_routing  # noqa: E402,F401
+# Today Tour reuses the existing routing/geocoding layer and active Bale jobs.
+import aqua_today_tour  # noqa: E402,F401
 import aqua_neshan_preview  # noqa: E402,F401
 import aqua_ai  # noqa: E402,F401
 import aqua_groq_runtime_hotfix  # noqa: E402,F401
@@ -51,6 +53,8 @@ import bale_reports  # noqa: E402,F401
 import bale_inbox_guard  # noqa: E402,F401
 # Preview only: mirror live new/review Bale jobs read-only from main when configured.
 import aqua_preview_bale_sync  # noqa: E402,F401
+# Load duplicate-flow injector before Smart guard so its client wrapper is emitted after it.
+import aqua_duplicate_customer_flow  # noqa: E402,F401
 import aqua_smart_register_guard  # noqa: E402,F401
 # Final map-page stability patch is registered before the map injectors so its
 # after_request handler runs LAST (Flask executes handlers in reverse order).
@@ -106,6 +110,9 @@ import aqua_round4_ui_fix  # noqa: E402,F401
 import aqua_round3_ui_fix  # noqa: E402,F401
 # Second isolated QA layer: fast Compound web search plus Bale/map/chart/Push UI repairs.
 import aqua_round2_fix  # noqa: E402,F401
+# Independent add-ons preserve the finance/map baseline while finishing expense UX.
+import aqua_expense_jalali  # noqa: E402,F401
+import aqua_numeric_digits  # noqa: E402,F401
 # Targeted requested fixes: real service edits, expense edit, fast live prices, dashboard share amount.
 import aqua_targeted_fix  # noqa: E402,F401
 # Keep targeted edit modals outside the hidden login view.
@@ -118,6 +125,8 @@ import aqua_qa_backend_fix  # noqa: E402,F401
 import aqua_round7_fix  # noqa: E402,F401
 # Preserve explicit Groq settings while still allowing fresh-isolate secret recovery.
 import aqua_round7_settings_guard  # noqa: E402,F401
+# Address intent is isolated from Aria voice/provider logic and reuses app_routing.
+import aqua_aria_map  # noqa: E402,F401
 import aqua_finance_dashboard  # noqa: E402,F401
 
 
