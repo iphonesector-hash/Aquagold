@@ -5,7 +5,7 @@
   const textOf=v=>String(v||'').replace(/\s+/g,' ').trim();
   const folded=v=>textOf(v).replace(/[يى]/g,'ی').replace(/ك/g,'ک').toLowerCase();
   window.app=function(){
-    const state=previous(),baseAction=state.runAquaAction,baseSubmit=state.submitAquaText;
+    const state=previous(),baseAction=state.runAquaAction,baseSubmit=state.submitAquaText,baseOpenNavigation=state.openNavigation;
     Object.assign(state,{ariaLocation:null,ariaSearchMarker:null,ariaNearbyMarkers:[],ariaMapRequest:0});
 
     state.waitForAriaMapRuntime=async function(){
@@ -76,15 +76,41 @@
       }catch(e){console.warn('Aria map fallback failed',e);return false}
     };
 
+    state.navigateInternal=async function(location){
+      const lat=Number(location?.latitude??location?.lat),lng=Number(location?.longitude??location?.lng);
+      if(!Number.isFinite(lat)||!Number.isFinite(lng))return false;
+      const target={...location,latitude:lat,longitude:lng,lat,lng};
+      this.ariaLocation=target;
+      this.page='map';
+      await sleep(80);try{this.renderMainMap?.()}catch{}
+      const bridge=window.AquaMapBridge;
+      if(bridge?.startNavigation){
+        try{await bridge.startNavigation(target);return true}catch(e){console.warn('AquaMapBridge navigation failed',e)}
+      }
+      let start=document.querySelector('#aqst-free-card .aqst-free-start');
+      if(!start){await this.syncAriaDestination(target);start=document.querySelector('#aqst-free-card .aqst-free-start')}
+      if(start){start.click();return true}
+      return false;
+    };
+
+    state.openNavigation=async function(location){
+      if(await this.navigateInternal(location))return true;
+      return baseOpenNavigation?.call(this,location);
+    };
+
     state.submitAquaText=async function(value,source='text'){
       const text=String(value||'').trim();
       if(this.ariaLocation&&/(?:مشتری.{0,14}(?:اطرافش|اونجا|همین آدرس|این آدرس|این نقطه)|اطرافش|مشتری(?:‌| )های اطراف)/.test(text)){
-        this.aquaMessages.push({role:'user',content:text});this.aquaInput='';await this.ariaNearby();
-        this.aquaMessages.push({role:'assistant',content:this.nearby.length?`${this.nearby.length.toLocaleString('fa-IR')} مشتری تا شعاع دو کیلومتری پیدا شد و روی نقشه نمایش داده شد.`:'در شعاع دو کیلومتری مشتری دارای موقعیت پیدا نشد.'});this.aquaScroll();return true;
-      }
-      if(this.ariaLocation&&/(?:مسیریابی|شروع(?: کن)? مسیر|مسیر(?:ش|ش رو| رو)?(?: شروع| بزن| باز| برو)?|ببر(?:م|مون)?(?: اونجا| به)|حرکت کن|راه بیفت)/.test(text)){
         this.aquaMessages.push({role:'user',content:text});this.aquaInput='';
-        const started=await this.ariaNavigate();
+        const ok=await this.ariaNearby();
+        if(ok)this.aquaMessages.push({role:'assistant',content:this.nearby.length?`${this.nearby.length.toLocaleString('fa-IR')} مشتری تا شعاع دو کیلومتری پیدا شد و روی نقشه نمایش داده شد.`:'در شعاع دو کیلومتری مشتری دارای موقعیت پیدا نشد.'});
+        this.aquaScroll();return ok;
+      }
+      const navFollowup=/^(?:مسیریابی(?: کن)?|شروع(?: کن)? مسیر|مسیر(?: رو|ش رو|ش)?(?: شروع کن| شروع| بزن)?|حرکت کن|راه بیفت)$/;
+      const navContext=/(?:ببر(?:م|مون)?|مسیر|مسیریابی).*(?:اونجا|همونجا|همین مقصد|این مقصد)/;
+      if(this.ariaLocation&&(navFollowup.test(text)||navContext.test(text))){
+        this.aquaMessages.push({role:'user',content:text});this.aquaInput='';
+        const started=await this.navigateInternal(this.ariaLocation);
         if(!started)this.aquaMessages.push({role:'assistant',content:'مقصد رو دارم، ولی مسیریابی داخلی نقشه آماده نشد. یک‌بار صفحه نقشه رو باز کن و دوباره بگو مسیر رو شروع کن.',error:true});
         this.aquaScroll();return started;
       }
@@ -106,26 +132,16 @@
       return baseAction?.call(this,action);
     };
 
-    state.ariaNavigate=async function(){
-      if(!this.ariaLocation)return false;
-      const bridge=window.AquaMapBridge;
-      if(bridge?.startNavigation){
-        try{await bridge.startNavigation(this.ariaLocation);return true}catch(e){console.warn('AquaMapBridge navigation failed',e)}
-      }
-      let start=document.querySelector('#aqst-free-card .aqst-free-start');
-      if(!start){await this.syncAriaDestination(this.ariaLocation);start=document.querySelector('#aqst-free-card .aqst-free-start')}
-      if(start){start.click();return true}
-      if(typeof this.openNavigation==='function'){try{this.openNavigation(this.ariaLocation);return true}catch{}}
-      return false;
-    };
+    state.ariaNavigate=async function(){return this.ariaLocation?this.navigateInternal(this.ariaLocation):false};
 
     state.ariaNearby=async function(){
-      if(!this.ariaLocation)return alert('اول یک مقصد را روی نقشه انتخاب کن');
+      if(!this.ariaLocation){alert('اول یک مقصد را روی نقشه انتخاب کن');return false}
       try{
         const p=this.ariaLocation;this.nearby=await this.api(`/customers/nearby?lat=${encodeURIComponent(p.latitude)}&lng=${encodeURIComponent(p.longitude)}&radius=2000`);
         this.ariaNearbyMarkers.forEach(m=>m.remove());this.ariaNearbyMarkers=[];
         for(const c of this.nearby){if(!c.latitude||!c.longitude)continue;this.ariaNearbyMarkers.push(L.marker([c.latitude,c.longitude],{icon:this.mapIcon()}).bindPopup(`<div dir="rtl"><b>${this.escapeHtml(c.map_label||c.name||'مشتری')}</b></div>`).addTo(this.mainMap))}
-      }catch(e){alert(e.message||'نمایش مشتری‌های اطراف انجام نشد')}
+        return true;
+      }catch(e){alert(e.message||'نمایش مشتری‌های اطراف انجام نشد');return false}
     };
 
     return state;
