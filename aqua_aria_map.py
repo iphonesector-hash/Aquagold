@@ -12,18 +12,32 @@ from aqua_map_address import normalize_persian_address
 _ORIGINAL_CHAT = app_v3.app.view_functions.get("aqua_chat")
 _ADDRESS_VERBS = ("پیدا کن", "نشون بده", "نشان بده", "روی نقشه", "باز کن", "مسیر")
 _CONTEXT_WORDS = ("اطرافش", "اونجا", "همین آدرس", "این آدرس", "این نقطه")
+_FILLER_WORDS = ("آریا", "لطفا", "لطفاً", "رو", "را", "برام", "برای من")
+
+
+def _strip_filler_words(value):
+    cleaned = value
+    # Remove complete command phrases first so standalone fillers such as «رو»
+    # never corrupt words like «تهران»، «مرزداران» or «روی».
+    cleaned = re.sub(r"(?:روی\s+نقشه\s*)?(?:نشون بده|نشان بده|پیدا کن|باز کن)", " ", cleaned)
+    cleaned = re.sub(r"^(?:برو\s+به|مسیر(?:\s+به)?)\s*", "", cleaned)
+    for token in _FILLER_WORDS:
+        cleaned = re.sub(rf"(?<!\S){re.escape(token)}(?!\S)", " ", cleaned)
+    return re.sub(r"\s+", " ", cleaned).strip(" ،,.-")
 
 
 def extract_address_intent(value):
     text = normalize_persian_address(value)
     if any(word in text for word in _CONTEXT_WORDS):
         return {"context": True, "address": ""}
+    # Preserve Aqua's existing CRM customer-search command. A phrase such as
+    # «مشتری رضایی را روی نقشه پیدا کن» must reach _ORIGINAL_CHAT rather than
+    # geocoding the customer's name as an address.
+    if "مشتری" in text:
+        return None
     if not any(word in text for word in _ADDRESS_VERBS):
         return None
-    cleaned = re.sub(r"(?:آریا|لطفا|لطفاً|رو|را|برام|برای من)", " ", text)
-    cleaned = re.sub(r"(?:روی نقشه\s*)?(?:نشون بده|نشان بده|پیدا کن|باز کن)", " ", cleaned)
-    cleaned = re.sub(r"^(?:برو به|مسیر)\s*", "", cleaned)
-    return {"context": False, "address": re.sub(r"\s+", " ", cleaned).strip()}
+    return {"context": False, "address": _strip_filler_words(text)}
 
 
 def _is_contextually_specific(query):
@@ -75,7 +89,7 @@ def inject_aria_map(response):
         body = response.get_data(as_text=True)
         if "/aqua-aria-map.js" not in body:
             body = body.replace("</head>", '<style>.aq-aria-marker{background:transparent;border:0}.aq-aria-marker span{display:grid;place-items:center;width:38px;height:38px;border:3px solid white;border-radius:14px;background:#7c3aed;color:white;box-shadow:0 8px 24px #0008}.bottom-nav{padding-bottom:max(8px,env(safe-area-inset-bottom));background:var(--surface-2)}#ariaMapCard{margin-bottom:max(0px,env(safe-area-inset-bottom))}</style></head>', 1)
-            body = body.replace("</body>", '<script src="/aqua-aria-map.js?v=20260914-1"></script></body>', 1)
+            body = body.replace("</body>", '<script src="/aqua-aria-map.js?v=20260914-2"></script></body>', 1)
             response.set_data(body)
             response.headers["Content-Length"] = str(len(response.get_data()))
     return response
