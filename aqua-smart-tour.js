@@ -42,7 +42,7 @@ function buildUI(mapEl){if($('#aq-smart-tour')||!mapEl)return;
  const controls=document.createElement('div');controls.id='aqst-controls';controls.innerHTML=`
   <div class="aqst-toolbar"><div class="aqst-mode"><button type="button" data-mode="car" class="active">🚗 خودرو</button><button type="button" data-mode="walking">🚶 پیاده</button></div><button type="button" id="aqst-tour" class="aqst-tourbtn">✦ تور امروز</button></div>`;
  frame.appendChild(controls);
- const details=document.createElement('div');details.id='aqst-tour-details';details.innerHTML=`<div class="aqst-legend"><span><i class="aqst-dot green"></i> موقعیت دقیق و تأییدشده</span><span><i class="aqst-dot red"></i> موقعیت تقریبی از آدرس</span><span><i class="aqst-dot orange"></i> موقعیت/مسیر پیدا نشد</span><span>⏱ ETA خودرو با ترافیک نشان</span></div><div class="aqst-notice" id="aqst-notice" hidden></div><div id="aqst-tour-output"></div>`;toolsContent.appendChild(details);
+ const details=document.createElement('div');details.id='aqst-tour-details';details.innerHTML=`<div class="aqst-legend"><span><i class="aqst-dot green"></i> موقعیت دقیق و تأییدشده</span><span><i class="aqst-dot red"></i> موقعیت تقریبی از آدرس</span><span><i class="aqst-dot orange"></i> موقعیت/مسیر پیدا نشد</span><span>⏱ ETA خودرو با ترافیک نشان</span></div><div class="aqst-notice" id="aqst-notice" hidden></div><div id="aqst-tour-output"></div>`;frame.insertAdjacentElement('afterend',details);
  createFixModal();createNav();bindUI();
  if(typeof aqSetupNormalMapWorkspace==='function')aqSetupNormalMapWorkspace();
  setTimeout(()=>mainMap()?.invalidateSize?.(),80);

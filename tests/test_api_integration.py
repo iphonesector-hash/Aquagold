@@ -204,3 +204,39 @@ def test_special_locations_persist_validate_and_isolate_users(app_module):
     )
     assert removed.status_code == 200
     assert admin.get("/api/map/special-locations").get_json()["items"] == []
+
+
+def test_bale_today_snapshot_uses_tehran_event_day(app_module):
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    import app_v3
+
+    client = app_module.app.test_client()
+    login(client)
+    today = datetime.now(ZoneInfo('Asia/Tehran')).replace(hour=0, minute=0, second=0, microsecond=0)
+    records = [
+        ('new', today - timedelta(days=2), None, None),
+        ('review', today, None, None),
+        ('completed', today - timedelta(days=2), today + timedelta(minutes=1), None),
+        ('completed', today, today - timedelta(seconds=1), None),
+        ('cancelled', today - timedelta(days=2), None, today + timedelta(minutes=1)),
+        ('cancelled', today, None, today - timedelta(seconds=1)),
+    ]
+    ids = []
+    try:
+        with app_v3.get_db() as db, db.cursor() as cur:
+            for i, (status, received, completed, cancelled) in enumerate(records):
+                cur.execute('''insert into bale_jobs(chat_id,message_id,raw_text,status,received_at,completed_at,cancelled_at)
+                    values(-987654321,%s,'snapshot test',%s,%s,%s,%s) returning id''',
+                    (i, status, received, completed, cancelled))
+                ids.append(str(cur.fetchone()['id']))
+        for tab, expected in [('new', {ids[0], ids[1]}), ('completed', {ids[2]}), ('cancelled', {ids[4]})]:
+            response = client.get('/api/bale/jobs/today?status=' + tab)
+            assert response.status_code == 200, response.get_json()
+            data = response.get_json()
+            actual = {row['id'] for row in data['items']} & set(ids)
+            assert actual == expected
+            assert data['counts'][tab] == len(data['items'])
+    finally:
+        with app_v3.get_db() as db, db.cursor() as cur:
+            cur.execute('delete from bale_jobs where chat_id=-987654321')

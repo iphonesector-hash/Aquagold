@@ -15,6 +15,7 @@ function setupFreeMapTools(){
  const host=$('#aq-smart-tour');if(!host||$('#aqst-free-search'))return;
  const box=document.createElement('div');box.id='aqst-free-search';box.className='aqst-free-search';box.innerHTML=`<div class="aqst-free-searchbar"><input id="aqst-map-place-q" autocomplete="off" inputmode="search" placeholder="جستجوی آدرس یا مکان روی نقشه…"><button type="button" id="aqst-map-place-go">جستجو</button></div><div class="aqst-free-results" id="aqst-free-results" hidden></div><div class="aqst-free-card" id="aqst-free-card" hidden></div><div class="aqst-free-hint">برای انتخاب یک نقطه دلخواه، انگشتت را حدود یک ثانیه روی همان نقطه نقشه نگه دار.</div>`;
  host.appendChild(box);
+ const hint=box.querySelector('.aqst-free-hint'),details=$('#aqst-tour-details');if(hint&&details)details.prepend(hint);
  $('#aqst-map-place-go').addEventListener('click',searchFreePlaces);
  $('#aqst-map-place-q').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();searchFreePlaces()}});
  $('#aqst-map-place-q').addEventListener('input',()=>{clearTimeout(ST.nav.freeSearchTimer);const q=$('#aqst-map-place-q').value.trim();if(q.length>=3)ST.nav.freeSearchTimer=setTimeout(searchFreePlaces,420)});

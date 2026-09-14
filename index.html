@@ -16,7 +16,7 @@
 <script src="/vendor/leaflet-1.9.4.js"></script>
 <script src="/vendor/chart-4.4.7.min.js"></script>
 <script src="/offline-store.js?v=20260827-v69"></script>
-<script src="/ui-v3-base.js?v=20260903-f4b"></script>
+<script src="/ui-v3-base.js?v=20260914-1"></script>
 <script src="/ui-v4-enhancements.js?v=20260901-stable1"></script>
 <script src="/ui-commerce.js?v=20260903-fe1"></script>
 <script src="/ui-visual-polish.js?v=20260827-v69"></script>
@@ -34,7 +34,7 @@ try{document.documentElement.dataset.theme=localStorage.getItem('aquagold-theme'
 </script>
 <script src="/aqua-premium.js?v=20260827-v69"></script>
 <script src="/aqua-ai.js?v=20260827-v76"></script>
-<script src="/bale-ui.js?v=20260827-v71"></script>
+<script src="/bale-ui.js?v=20260914-1"></script>
 <script src="/ui-v4-finalize.js?v=20260903-fe1"></script>
 <script defer src="/vendor/alpinejs-3.14.9.min.js"></script>
 <style>
@@ -64,7 +64,7 @@ html[data-theme=dark]{--bg:#071418;--surface:rgba(14,31,36,.86);--surface-2:#102
 @media print{.no-print,.sidebar,.topbar,.bottom-nav,.fab,#toast-stack{display:none!important}body{background:white;color:black}.shell{display:block}.content{max-width:none;padding:0}.card{box-shadow:none;border:1px solid #ddd;background:white}}
 @keyframes aqua-on-autofill{from{opacity:.99}to{opacity:1}}#aqua-settlement-amount:-webkit-autofill{animation-name:aqua-on-autofill;-webkit-text-fill-color:var(--text);transition:background-color 99999s ease-out 0s}
 </style>
-<link href="/aqua-premium.css?v=20260827-v69" rel="stylesheet">
+<link href="/aqua-premium.css?v=20260914-1" rel="stylesheet">
 <link href="/aqua-ai.css?v=20260827-v69" rel="stylesheet">
 <link href="/bale.css?v=20260827-v69" rel="stylesheet">
 <link rel="stylesheet" href="/aqua-finance.css?v=20260907-f1">
@@ -135,7 +135,7 @@ if(window.Chart){Chart.defaults.font.family='Vazirmatn';Chart.defaults.color='#7
   </div>
   <div class="card aqua-action-wrap">
     <div class="flex justify-between items-end gap-3"><div><h3 class="section-title">مرکز فرماندهی</h3><p class="text-xs muted mt-1">دسترسی سریع به تمام عملیات‌های روزانه</p></div><span class="chip text-cyan-300">۸ ابزار اصلی</span></div>
-    <div class="aqua-action-grid"><template x-for="action in quickActions" :key="action.id"><button type="button" @click="runQuick(action)" class="aqua-action" :data-tone="action.tone"><span class="aqua-action-orb" x-html="icon(action.icon)"></span><span class="aqua-action-label" x-text="action.label"></span><span class="aqua-action-caption" x-text="action.caption"></span><span class="aqua-action-chevron">‹</span></button></template></div>
+    <div class="aqua-action-grid"><template x-for="action in quickActions" :key="action.id"><button type="button" @click="runQuick(action)" class="aqua-action" :data-tone="action.tone"><span class="aqua-action-orb" x-html="icon(action.icon)"></span><span class="aqua-action-label" x-text="action.label"></span><span class="aqua-pending-badge" x-show="action.id==='bale-jobs'" x-text="Number((baleCounts||{}).new||0).toLocaleString('fa-IR')" aria-label="کارهای باقی‌مانده"></span><span class="aqua-action-caption" x-text="action.caption"></span><span class="aqua-action-chevron">‹</span></button></template></div>
   </div>
   <div class="aqua-ops">
     <div class="card p-5"><div class="flex justify-between items-center"><div><h3 class="section-title">آخرین سرویس‌ها</h3><p class="text-xs muted mt-1">فعالیت‌های تازه ثبت‌شده</p></div><button type="button" @click="go('daily')" class="btn soft !py-2 flex items-center gap-2"><span x-html="icon('daily')"></span><span>گزارش روزانه</span></button></div>

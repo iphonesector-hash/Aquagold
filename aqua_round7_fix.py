@@ -209,7 +209,7 @@ def aqua_transcribe_round7():
                     audio,
                     mimetype,
                     {"Authorization": f"Bearer {groq_key}"},
-                    timeout=60,
+                    timeout=14,
                 )
                 spoken = str(payload.get("text") or "").strip()
                 if spoken:
@@ -237,7 +237,7 @@ def aqua_transcribe_round7():
                 audio,
                 mimetype,
                 {"xi-api-key": eleven_key},
-                timeout=60,
+                timeout=14,
             )
             spoken = str(payload.get("text") or "").strip()
             if spoken:

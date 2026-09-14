@@ -113,6 +113,9 @@ def _groq_answer_with_explicit_settings(settings, text, history, context):
         merged.update({key: value for key, value in current.items() if value not in (None, "")})
         current = merged
 
+    if not str(current.get("groq_api_key") or "").strip():
+        raise RuntimeError("کلید Groq در این نسخه قابل خواندن نیست؛ تنظیمات آریا یا GROQ_API_KEY محیط Preview را بررسی کنید.")
+
     if _wants_live_web(text):
         return _fast_live_answer(current, text)
 
