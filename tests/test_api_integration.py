@@ -211,6 +211,7 @@ def test_bale_today_snapshot_uses_tehran_event_day(app_module):
     from zoneinfo import ZoneInfo
     import app_v3
 
+    app_v3.limiter.reset()  # Isolate this test from earlier login rate-limit tests.
     client = app_module.app.test_client()
     login(client)
     today = datetime.now(ZoneInfo('Asia/Tehran')).replace(hour=0, minute=0, second=0, microsecond=0)
