@@ -57,7 +57,7 @@ function app(){return{
   },
   get smartRows(){let p=this.smartParsed||{};return[['موتور تحلیل',this.parserLabel(p.parser)],['نام خانوادگی',p.last_name],['شماره‌ها',(p.phones||[]).join(' • ')],['آدرس',p.address],['سرویس',p.service_type],['شرح',p.description],['ویزیتور',p.visitor_code],['زمان',p.time_text],['مبلغ',p.amount?this.money(p.amount)+' تومان':'—']]},
 
-  num(v){return Number(String(v||0).replace(/[٬،,\s]/g,''))||0},
+  num(v){let digits={'۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9','٠':'0','١':'1','٢':'2','٣':'3','٤':'4','٥':'5','٦':'6','٧':'7','٨':'8','٩':'9'};return Number(String(v||0).replace(/[۰-۹٠-٩]/g,n=>digits[n]).replace(/[٬،,\s]/g,''))||0},
   money(v){return new Intl.NumberFormat('fa-IR').format(Number(v||0))},
   jalaliParts(v){let parts=new Intl.DateTimeFormat('en-US-u-ca-persian',{timeZone:'Asia/Tehran',year:'numeric',month:'numeric',day:'numeric'}).formatToParts(new Date(v));let o={};parts.forEach(p=>{if(['year','month','day'].includes(p.type))o[p.type]=Number(p.value)});return o},
   tehranDay(v){let f=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit'});return f.format(new Date(v))},

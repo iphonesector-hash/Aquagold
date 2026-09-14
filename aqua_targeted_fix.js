@@ -10,7 +10,7 @@
       serviceEdit:{id:null,service_type:'',description:'',invoice_amount:'',received_amount:'',status:'completed'},
       expenseEditOpen:false,
       expenseEditBusy:false,
-      expenseEdit:{id:null,category:'other',title:'',amount:'',notes:''},
+      expenseEdit:{id:null,category:'other',title:'',amount:'',notes:'',expense_date:''},
     });
 
     state.openServiceEdit=function(job){
@@ -61,6 +61,7 @@
         title:expense?.title||'',
         amount:Number(expense?.amount||0),
         notes:expense?.notes||'',
+        expense_date:expense?.expense_date?new Date(new Date(expense.expense_date).getTime()-new Date(expense.expense_date).getTimezoneOffset()*60000).toISOString().slice(0,16):'',
       };
       this.expenseEditOpen=true;
     };
@@ -75,6 +76,7 @@
           title:String(this.expenseEdit.title||'').trim(),
           amount:this.num(this.expenseEdit.amount),
           notes:this.expenseEdit.notes||'',
+          expense_date:this.expenseEdit.expense_date?new Date(this.expenseEdit.expense_date).toISOString():null,
         };
         const result=await this.api('/expenses/'+this.expenseEdit.id,{method:'PATCH',body:JSON.stringify(payload)});
         if(result?.queued){

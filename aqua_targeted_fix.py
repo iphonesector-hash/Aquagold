@@ -338,14 +338,15 @@ def aqua_expense_update(eid):
             default="other",
         )
         notes = valid_text(data.get("notes", before["notes"]), "توضیحات", max_length=4000)
+        expense_date = valid_timestamp(data.get("expense_date", before["expense_date"]), "تاریخ هزینه")
         cur.execute(
             """
             update expenses
-            set category=%s,title=%s,amount=%s,notes=%s,updated_at=now()
+            set category=%s,title=%s,amount=%s,notes=%s,expense_date=%s,updated_at=now()
             where id=%s
             returning id,category,title,amount,expense_date,notes
             """,
-            (category, title, amount, notes, eid),
+            (category, title, amount, notes, expense_date, eid),
         )
         updated = cur.fetchone()
         app_v3.audit(
@@ -383,6 +384,7 @@ TARGETED_MODAL_HTML = r'''
       <select x-model="expenseEdit.category" class="field"><option value="goods">خرید جنس/قطعه</option><option value="fuel">بنزین/سوخت</option><option value="parking">پارکینگ</option><option value="tools">ابزار/تعمیر</option><option value="food">غذا</option><option value="other">متفرقه</option></select>
       <input x-model="expenseEdit.title" class="field" placeholder="عنوان هزینه">
       <input x-model="expenseEdit.amount" inputmode="numeric" class="field" placeholder="مبلغ">
+      <label class="text-sm muted">تاریخ و ساعت هزینه<input x-model="expenseEdit.expense_date" type="datetime-local" class="field mt-1 w-full max-w-full" style="min-width:0"></label>
       <textarea x-model="expenseEdit.notes" class="field" placeholder="توضیحات"></textarea>
     </div>
     <button type="button" class="btn primary w-full mt-4" :disabled="expenseEditBusy" @click="saveExpenseEdit()" x-text="expenseEditBusy?'در حال ذخیره…':'ذخیره ویرایش'"></button>
@@ -420,7 +422,7 @@ def inject_aqua_targeted_fix(response):
         daily_repl = '<div class="md:text-left"><b x-text="money(j.received_amount)+\' تومان\'"></b><div class="text-xs muted" x-text="\'سهم شرکت: \'+money(j.company_share_amount)"></div><button type="button" @click="openServiceEdit(j)" class="btn soft !py-2 mt-2">ویرایش</button></div></div></template>'
         body = body.replace(daily_tail, daily_repl, 1)
         expense_delete = '<button type="button" x-show="canAdmin" @click="removeExpense(e)" class="text-xs text-red-500 block mt-1">حذف</button>'
-        expense_actions = '<button type="button" @click="openExpenseEdit(e)" class="text-xs text-teal-500 block mt-1">ویرایش</button>' + expense_delete
+        expense_actions = '<div class="flex gap-2 mt-2"><button type="button" @click="openExpenseEdit(e)" class="btn soft !py-2 !px-3 min-h-11">ویرایش</button><button type="button" x-show="canAdmin" @click="removeExpense(e)" class="btn !py-2 !px-3 min-h-11 text-red-500">حذف</button></div>'
         body = body.replace(expense_delete, expense_actions, 1)
         if 'x-show="serviceEditOpen"' not in body:
             body = body.replace("</main>", TARGETED_MODAL_HTML + "</main>", 1)
