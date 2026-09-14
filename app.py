@@ -128,6 +128,8 @@ import aqua_round7_settings_guard  # noqa: E402,F401
 # Address intent is isolated from Aria voice/provider logic and reuses app_routing.
 import aqua_aria_map  # noqa: E402,F401
 import aqua_finance_dashboard  # noqa: E402,F401
+# Last runtime layer: fixes visible mobile expense/map wiring and consumes Aria map actions.
+import aqua_runtime_completion  # noqa: E402,F401
 
 
 @app_v3.roles_required("technician")
