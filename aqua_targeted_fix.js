@@ -76,8 +76,11 @@
           title:String(this.expenseEdit.title||'').trim(),
           amount:this.num(this.expenseEdit.amount),
           notes:this.expenseEdit.notes||'',
-          expense_date:this.expenseEdit.expense_date?new Date(this.expenseEdit.expense_date).toISOString():null,
         };
+        // A cleared datetime must preserve the existing NOT NULL expense_date.
+        if(this.expenseEdit.expense_date){
+          payload.expense_date=new Date(this.expenseEdit.expense_date).toISOString();
+        }
         const result=await this.api('/expenses/'+this.expenseEdit.id,{method:'PATCH',body:JSON.stringify(payload)});
         if(result?.queued){
           const id=String(this.expenseEdit.id);
