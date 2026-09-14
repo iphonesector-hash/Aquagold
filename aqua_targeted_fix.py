@@ -23,6 +23,7 @@ from aquagold_validation import (
     choice as valid_choice,
     integer as valid_integer,
     text as valid_text,
+    timestamp as valid_timestamp,
 )
 
 
@@ -429,7 +430,7 @@ def inject_aqua_targeted_fix(response):
         if '/aqua-targeted-fix.js?' not in body:
             body = body.replace(
                 "</body>",
-                '<script src="/aqua-targeted-fix.js?v=20260902-1"></script></body>',
+                '<script src="/aqua-targeted-fix.js?v=20260914-2"></script></body>',
                 1,
             )
         response.set_data(body)
