@@ -78,9 +78,11 @@ def _extract_customer_name(job):
 
 
 def _explicit_weekday(text):
-    normalized = _norm(text)
+    normalized = _norm(text).replace("\u200c", " ")
+    normalized = re.sub(r"(یک|دو|سه|چهار|پنج)\s+شنبه", r"\1شنبه", normalized)
     for label, weekday in _WEEKDAYS.items():
-        if label in normalized:
+        label = label.replace("\u200c", "").replace(" ", "")
+        if re.search(rf"(?<!\w){label}(?!\w)", normalized):
             return weekday
     return None
 
@@ -104,9 +106,40 @@ def _at_today(now, hour, minute=0):
     return now.replace(hour=max(0, min(23, int(hour))), minute=max(0, min(59, int(minute))), second=0, microsecond=0)
 
 
+def _job_due_day(job):
+    """Anchor weekday/relative appointments to message receipt, not the day viewed."""
+    try:
+        received = datetime.fromisoformat(str(job.get("received_at")).replace("Z", "+00:00"))
+        if received.tzinfo is None:
+            received = received.replace(tzinfo=TEHRAN)
+        received = received.astimezone(TEHRAN)
+    except (ValueError, TypeError):
+        return None
+    raw = _norm(job.get("raw_text")).replace("\u200c", " ")
+    # Explicit dates need a calendar-aware parser; never reinterpret them as today.
+    if re.search(r"\d{2,4}[/\-]\d{1,2}[/\-]\d{1,2}", raw):
+        return None
+    if re.search(r"پس\s*فردا", raw):
+        return received.date() + timedelta(days=2)
+    if "فردا" in raw:
+        return received.date() + timedelta(days=1)
+    if "امروز" in raw:
+        return received.date()
+    weekday = _explicit_weekday(raw)
+    if weekday is not None:
+        delta = (weekday - received.weekday()) % 7
+        if "هفته بعد" in raw or "هفته آینده" in raw:
+            delta = delta or 7
+        return received.date() + timedelta(days=delta)
+    return received.date()
+
+
 def _parse_schedule(job, now=None):
     now = now or _now()
     raw = _norm(job.get("raw_text"))
+    due_day = _job_due_day(job)
+    if due_day is None or due_day != now.date():
+        return None
     weekday = _explicit_weekday(raw)
     if weekday is not None and weekday != now.weekday():
         return None
@@ -138,13 +171,6 @@ def _parse_schedule(job, now=None):
         start = _at_today(now, hour, 0)
         return {"immediate": immediate, "start": now if immediate else start, "end": start + timedelta(hours=1), "label": "همین الان" if immediate else f"حدود {start:%H:%M}"}
 
-    received = job.get("received_at")
-    try:
-        received_local = datetime.fromisoformat(str(received).replace("Z", "+00:00")).astimezone(TEHRAN)
-        if weekday is None and received_local.date() != now.date():
-            return None
-    except Exception:
-        pass
     return {"immediate": immediate, "start": now, "end": now.replace(hour=23, minute=59, second=0, microsecond=0), "label": "امروز"}
 
 

@@ -29,6 +29,9 @@ def _payment_key(value):
 def _persist_created_payment(response):
     if request.method != 'POST' or response.status_code != 201 or not response.is_json:
         return
+    # Replaying a stored create response must never undo a later payment edit.
+    if response.headers.get('Idempotency-Replayed') == 'true':
+        return
     if request.path not in ('/api/jobs', '/api/smart/register'):
         return
     payload = response.get_json(silent=True) or {}

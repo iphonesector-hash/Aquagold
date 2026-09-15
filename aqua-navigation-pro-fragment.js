@@ -114,6 +114,33 @@ async function selectFreeDestination(point){
 
 function clearFreeDestination(){try{const m=mainMap();if(ST.nav.freeMarker)m?.removeLayer(ST.nav.freeMarker)}catch{}ST.nav.freeMarker=null;ST.nav.freeDestination=null;const card=$('#aqst-free-card');if(card)card.hidden=true}
 
+// One coordinate-based entry point shared by Aria and the existing map UI.
+// Never infer the requested destination from a previously rendered button.
+function aqBridgePoint(location){
+ const rawLat=location?.latitude??location?.lat,rawLng=location?.longitude??location?.lng;
+ if(rawLat==null||rawLng==null||String(rawLat).trim()===''||String(rawLng).trim()==='')return null;
+ const lat=Number(rawLat),lng=Number(rawLng);
+ if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return null;
+ return{lat,lng,name:location.title||location.name||'مقصد انتخابی',address:location.formatted_address||location.address||'',source:'aria',quality:location.quality||'approximate',free:true};
+}
+let aqBridgeStarting=false;
+window.AquaMapBridge={
+ async selectDestination(location){
+  const point=aqBridgePoint(location);if(!point||!mainMap())return false;
+  createNav();setupFreeMapTools();await selectFreeDestination(point);
+  return true;
+ },
+ async startNavigation(location){
+  const point=aqBridgePoint(location);if(!point||aqBridgeStarting)return false;
+  aqBridgeStarting=true;
+  try{
+   if(!await this.selectDestination(point))return false;
+   await startNavigation(point);
+   return !!ST.nav.active&&ST.nav.target?.lat===point.lat&&ST.nav.target?.lng===point.lng;
+  }finally{aqBridgeStarting=false}
+ }
+};
+
 function navIcon(step){const t=String(step?.type||''),m=String(step?.modifier||'').replace(/\s+/g,'-');if(t==='arrive')return'●';if(/roundabout|rotary/.test(t))return'⟳';if(m==='uturn')return'⤵';if(m==='left')return'↰';if(m==='right')return'↱';if(m==='slight-left')return'↖';if(m==='slight-right')return'↗';if(m==='sharp-left')return'↩';if(m==='sharp-right')return'↪';if(t==='fork'||t==='merge'||t==='on ramp'||t==='off ramp')return m.includes('left')?'↖':'↗';return'↑'}
 function roundVoiceDistance(m){m=Math.max(0,Number(m||0));if(m<45)return'چند متر';if(m<120)return`${fa(Math.round(m/10)*10)} متر`;if(m<800)return`${fa(Math.round(m/50)*50)} متر`;if(m<1500)return`${fa(Math.round(m/100)*100)} متر`;return`${new Intl.NumberFormat('fa-IR',{maximumFractionDigits:1}).format(m/1000)} کیلومتر`}
 function arrivalClock(seconds){try{return new Intl.DateTimeFormat('fa-IR',{hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Tehran'}).format(new Date(Date.now()+Math.max(0,seconds||0)*1000))}catch{return'—'}}
@@ -156,3 +183,4 @@ function updateNavPosition(pos,coords={},initial=false){if(!ST.nav.active)return
 async function onNavPosition(p){if(!ST.nav.active)return;updateNavPosition({lat:p.coords.latitude,lng:p.coords.longitude},{heading:p.coords.heading,speed:p.coords.speed},false)}
 async function reroute(pos){if(!ST.nav.active||!ST.nav.target)return;try{const route=await fetchRoute(pos,ST.nav.target);if(!route.points?.length)return;ST.nav.route=route;prepareRouteModel(route);updateRouteLayer(route);ST.nav.lastPos=pos;updateNavPosition(pos,ST.nav.lastCoords||{},true);ariaSpeak('از مسیر خارج شدی. مسیر دوباره محاسبه شد.',{replace:true})}catch{}}
 async function stopNavigation(){if(ST.nav.watch!=null){navigator.geolocation.clearWatch(ST.nav.watch);ST.nav.watch=null}try{await ST.nav.wake?.release?.()}catch{}ST.nav.wake=null;ST.nav.active=false;ST.nav.arrived=false;ST.nav.prevPos=null;ST.nav.follow=true;stopVoicePlayback();$('#aqst-nav').hidden=true;try{ST.nav.map?.remove?.()}catch{}ST.nav.map=null;ST.nav.mapKind=null;ST.nav.line=null;ST.nav.casing=null;ST.nav.marker=null;ST.nav.destMarker=null;ST.nav.userEl=null;if(ST.pendingTourChange){$('#aqst-update-banner')?.setAttribute('hidden','');await planTour(false)}}
+

@@ -14,7 +14,7 @@ import app_v3
 import aqua_neshan_preview as neshan
 import aqua_smart_tour
 import aqua_today_tour
-from aqua_map_address import normalize_persian_address
+from aqua_map_address import ADDRESS_CUE, NON_ADDRESS_TOPIC, address_result_matches, normalize_persian_address
 
 
 _SMART_ACTIVE_TODAY_ROWS = aqua_smart_tour._active_today_rows
@@ -22,7 +22,9 @@ _SMART_ACTIVE_TODAY_ROWS = aqua_smart_tour._active_today_rows
 
 def _active_today_and_overdue_rows():
     """Return today's jobs plus unfinished older new/review jobs, never future jobs."""
-    today = list(_SMART_ACTIVE_TODAY_ROWS())
+    today = list(_SMART_ACTIVE_TODAY_ROWS())[:aqua_smart_tour.MAX_TOUR_JOBS]
+    if len(today) >= aqua_smart_tour.MAX_TOUR_JOBS:
+        return today
     seen = {str(row.get("id")) for row in today}
     now = aqua_smart_tour._now()
     try:
@@ -40,24 +42,17 @@ def _active_today_and_overdue_rows():
         row = app_v3.row_json(raw)
         if str(row.get("id")) in seen:
             continue
-        try:
-            received = row.get("received_at")
-            received_local = (
-                received.astimezone(aqua_smart_tour.TEHRAN)
-                if hasattr(received, "astimezone")
-                else aqua_smart_tour.datetime.fromisoformat(str(received).replace("Z", "+00:00")).astimezone(aqua_smart_tour.TEHRAN)
-            )
-            if received_local.date() >= now.date():
-                continue
-        except Exception:
+        due_day = aqua_smart_tour._job_due_day(row)
+        if due_day is None or due_day >= now.date():
             continue
         row["id"] = str(row["id"])
         if row.get("customer_id"):
             row["customer_id"] = str(row["customer_id"])
         row["phone"] = aqua_smart_tour._extract_phone(row.get("phone"), row.get("raw_text"))
         row["display_name"] = aqua_smart_tour._extract_customer_name(row)
-        prior = aqua_smart_tour._parse_schedule(row, received_local)
-        prior_label = (prior or {}).get("label") or received_local.strftime("%Y-%m-%d")
+        due_time = now.replace(year=due_day.year, month=due_day.month, day=due_day.day)
+        prior = aqua_smart_tour._parse_schedule(row, due_time)
+        prior_label = (prior or {}).get("label") or due_day.isoformat()
         schedule = {
             "immediate": False,
             "start": now,
@@ -100,22 +95,18 @@ def _strip_filler_words(value):
 
 def extract_address_intent(value):
     text = normalize_persian_address(value)
+    if NON_ADDRESS_TOPIC.search(text) and "مشتری" not in text:
+        return None
     if any(word in text for word in _CONTEXT_WORDS):
         return {"context": True, "address": ""}
     if "مشتری" in text:
         return None
     if not any(word in text for word in _ADDRESS_VERBS):
         return None
-    return {"context": False, "address": _strip_filler_words(text)}
-
-
-def _is_contextually_specific(query):
-    locality = (
-        "تهران", "کرج", "مرزداران", "صادقیه", "آریاشهر", "پونک", "ستارخان",
-        "یوسف آباد", "یوسف‌آباد", "سعادت آباد", "سعادت‌آباد", "تهرانسر",
-        "فردیس", "شهر", "استان",
-    )
-    return any(token in query for token in locality) and len(query.split()) >= 2
+    query = _strip_filler_words(text)
+    if not ADDRESS_CUE.search(query):
+        return None
+    return {"context": False, "address": query}
 
 
 def _decorate_result(item, index, query, source):
@@ -132,7 +123,7 @@ def _decorate_result(item, index, query, source):
             for key in ("neighbourhood", "city", "province")
             if str(item.get(key) or "").strip()
         )
-        or query
+        or ""
     ).strip()
     title = str(
         item.get("title")
@@ -140,7 +131,7 @@ def _decorate_result(item, index, query, source):
         or item.get("neighbourhood")
         or item.get("city")
         or formatted
-        or query
+        or ""
     ).strip()
     return {
         **item,
@@ -209,19 +200,14 @@ def aria_map_chat():
     if len(query) < 3:
         return jsonify({"answer": "اسم محله یا خیابون اصلی رو هم بگو.", "results": []})
     try:
-        results = _address_results(query, 3)
+        results = [item for item in _address_results(query, 3) if address_result_matches(query, item)]
     except Exception:
         app_v3.logger.exception("aria_map_geocoding_failed")
         return jsonify({"answer": "فعلاً ارتباط با سرویس نقشه برقرار نشد. دوباره امتحان کن."}), 503
     if not results:
         return jsonify({"answer": "این آدرس رو دقیق پیدا نکردم. اسم محله یا خیابون اصلی رو هم بگو.", "results": []})
     first = results[0]
-    precise_first = (
-        _is_contextually_specific(query)
-        and not str(first.get("unmatched") or "").strip()
-        and first.get("source") == "neshan"
-    )
-    if len(results) != 1 and not precise_first:
+    if len(results) != 1 or str(first.get("unmatched") or "").strip():
         return jsonify({
             "answer": "چند جای مشابه پیدا کردم. کدومش منظورت بود؟",
             "query": query,
@@ -260,8 +246,7 @@ function expensePicker(s,reset=false){const sec=[...document.querySelectorAll('s
 function fixEdit(s){try{s.ensureExpenseJalaliPicker?.()}catch{}const p=$('#expenseJalaliPicker');if(p){p.style.cssText+=';width:100%!important;max-width:100%!important;min-width:0!important;overflow:hidden!important'}const modal=[...document.querySelectorAll('h3')].find(x=>x.textContent?.includes('ویرایش هزینه'))?.closest('.fixed,[style*="position:fixed"]');[...modal?.querySelectorAll('label')||[]].find(x=>x.textContent?.includes('تاریخ و ساعت هزینه'))?.style.setProperty('display','none','important')}
 function mapLayout(){const c=$('#aqst-controls'),d=$('#aqst-tour-details');if(c&&d){if(c.nextElementSibling!==d)d.parentNode.insertBefore(c,d);c.classList.add('aq-controls-below')}$('#aquaTodayTourLaunch')?.remove()}
 function card(s,l){let c=$('#ariaMapCard'),d=$('#aqst-tour-details');if(!c){c=document.createElement('div');c.id='ariaMapCard';c.className='card p-4 mt-3';(d?.parentNode||$('#mainMap')?.parentElement?.parentElement)?.insertBefore(c,d||null)}if(!c)return;c.style.display='block';c.removeAttribute('x-show');c.innerHTML=`<b>${esc(l.title||l.name||'نتیجه آدرس')}</b><div class="text-sm muted">${esc(l.formatted_address||l.address||'')}</div><div class="flex flex-wrap gap-2 mt-3"><button class="btn primary" data-nav>مسیریابی</button><button class="btn soft" data-near>مشتری‌های اطراف</button><button class="btn glass" data-close>بستن</button></div>`;c.querySelector('[data-nav]').onclick=()=>s.ariaNavigate?.();c.querySelector('[data-near]').onclick=()=>s.ariaNearby?.();c.querySelector('[data-close]').onclick=()=>{s.ariaLocation=null;try{s.ariaSearchMarker?.remove()}catch{}s.ariaSearchMarker=null;c.style.display='none'}}
-function show(s,l){const a=+l?.latitude,b=+l?.longitude;if(!Number.isFinite(a)||!Number.isFinite(b))return false;s.ariaLocation={...l,latitude:a,longitude:b};s.page='map';let n=0;(function draw(){n++;try{s.renderMainMap?.()}catch{}if(!s.mainMap||!window.L){if(n<25)setTimeout(draw,100);return}try{s.ariaSearchMarker?.remove()}catch{}const i=L.divIcon({className:'aq-aria-marker',html:'<span>◆</span>',iconSize:[38,42],iconAnchor:[19,38]});s.ariaSearchMarker=L.marker([a,b],{icon:i}).addTo(s.mainMap).bindPopup(`<div dir="rtl"><b>${esc(l.title||l.name||'نتیجه آدرس')}</b><br>${esc(l.formatted_address||l.address||'')}</div>`).openPopup();s.mainMap.setView([a,b],17);setTimeout(()=>s.mainMap.invalidateSize?.(),50);card(s,s.ariaLocation);mapLayout()})();return true}
-function patch(s){if(!s||s.__aqFinalCompletion)return;s.__aqFinalCompletion=1;expensePicker(s);const ce=s.createExpense?.bind(s);if(ce)s.createExpense=async function(...a){syncExpense(this);const r=await ce(...a);if(!this.expenseForm?.title&&!this.expenseForm?.amount)setTimeout(()=>expensePicker(this,true),30);return r};const oe=s.openExpenseEdit?.bind(s);if(oe)s.openExpenseEdit=function(...a){const r=oe(...a);setTimeout(()=>fixEdit(this),30);return r};const ra=s.runAquaAction?.bind(s);s.runAquaAction=function(a){if(a?.type==='show_address_on_map')return show(this,a.location);if(a?.customer?.kind==='address')return show(this,a.customer);return ra?.(a)};s.showAriaAddress=function(l){return show(this,l)};const st=s.submitAquaText?.bind(s);if(st)s.submitAquaText=async function(v,src='text'){const ok=await st(v,src),m=this.aquaMessages?.at?.(-1)||this.aquaMessages?.[this.aquaMessages.length-1];if(ok&&m?.results?.length)m.results=m.results.map((r,i)=>{const a=r.formatted_address||r.address||r.display_name||r.title||r.name||'';return{...r,id:r.id||`aria-address-${i}`,kind:r.kind||'address',name:r.name||r.title||a,title:r.title||r.name||a,address:a,formatted_address:r.formatted_address||a}});if(ok&&m?.action?.type==='show_address_on_map')setTimeout(()=>this.runAquaAction(m.action),30);return ok};mapLayout();fixEdit(s)}
+function patch(s){if(!s||s.__aqFinalCompletion)return;s.__aqFinalCompletion=1;expensePicker(s);const ce=s.createExpense?.bind(s);if(ce)s.createExpense=async function(...a){syncExpense(this);const r=await ce(...a);if(!this.expenseForm?.title&&!this.expenseForm?.amount)setTimeout(()=>expensePicker(this,true),30);return r};const oe=s.openExpenseEdit?.bind(s);if(oe)s.openExpenseEdit=function(...a){const r=oe(...a);setTimeout(()=>fixEdit(this),30);return r};const showAddress=s.showAriaAddress?.bind(s);if(showAddress)s.showAriaAddress=async function(l){const shown=await showAddress(l);if(shown){card(this,this.ariaLocation);mapLayout()}return shown};mapLayout();fixEdit(s)}
 function css(){if($('#aq-final-style'))return;const x=document.createElement('style');x.id='aq-final-style';x.textContent=`.aqj{width:100%;min-width:0;max-width:100%;overflow:hidden;border:1px solid var(--line);border-radius:17px;padding:10px;background:var(--surface-2)}.aqj>b{display:block;color:var(--muted);font-size:.78rem;margin-bottom:7px}.aqj-date{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.aqj-time{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;margin-top:6px}.aqj-field{min-width:0;font-size:.68rem;color:var(--muted)}.aqj-field select{display:block;width:100%!important;min-width:0!important;max-width:100%!important;margin-top:3px;padding:.7rem .45rem!important;font-size:16px!important}.aqj-native{display:none!important}#expenseJalaliPicker,#expenseJalaliPicker *{box-sizing:border-box;min-width:0}#expenseJalaliPicker{width:100%!important;max-width:100%!important;overflow:hidden!important}#expenseJalaliPicker select{width:100%!important;max-width:100%!important;font-size:16px!important}#aqst-controls.aq-controls-below{position:relative!important;inset:auto!important;transform:none!important;width:100%!important;max-width:100%!important;margin:2px 0 6px!important;padding:0!important;z-index:4!important}#aqst-controls.aq-controls-below .aqst-toolbar{margin:0!important}#ariaMapCard{width:100%;max-width:100%;min-width:0;overflow:hidden}@media(max-width:600px){#aqst-controls.aq-controls-below .aqst-toolbar{grid-template-columns:1fr!important}}`;document.head.append(x)}
 function boot(){css();let n=0;const t=setInterval(()=>{n++;const s=state();patch(s);mapLayout();if(s)expensePicker(s);if(n>100)clearInterval(t)},100);new MutationObserver(()=>{const s=state();patch(s);mapLayout();if(s&&!$('#aqExpenseJalaliCreate'))expensePicker(s)}).observe(document.documentElement,{subtree:true,childList:true})}
 document.readyState==='loading'?document.addEventListener('DOMContentLoaded',boot,{once:true}):boot();
@@ -286,9 +271,10 @@ def inject_aria_map(response):
                 1,
             )
         if "/aqua-aria-map.js" not in body:
-            body = body.replace("</body>", '<script src="/aqua-aria-map.js?v=20260914-3"></script></body>', 1)
+            body = body.replace("</body>", '<script src="/aqua-aria-map.js?v=20260915-1"></script></body>', 1)
         if "/aqua-final-task-fix.js" not in body:
-            body = body.replace("</body>", '<script src="/aqua-final-task-fix.js?v=20260914-2"></script></body>', 1)
+            body = body.replace("</body>", '<script src="/aqua-final-task-fix.js?v=20260915-1"></script></body>', 1)
         response.set_data(body)
         response.headers["Content-Length"] = str(len(response.get_data()))
     return response
+

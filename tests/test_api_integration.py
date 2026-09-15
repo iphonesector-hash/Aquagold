@@ -241,3 +241,38 @@ def test_bale_today_snapshot_uses_tehran_event_day(app_module):
     finally:
         with app_v3.get_db() as db, db.cursor() as cur:
             cur.execute('delete from bale_jobs where chat_id=-987654321')
+
+
+
+@pytest.mark.parametrize('path', ['/api/jobs', '/api/smart/register'])
+def test_create_replay_preserves_later_payment_correction(app_module, path):
+    from uuid import uuid4
+    client = app_module.app.test_client()
+    csrf = login(client)
+    headers = {'X-CSRF-Token': csrf}
+    customer = client.post('/api/customers', headers=headers, json={'last_name': 'آزمایش بازپخش'})
+    assert customer.status_code == 201, customer.get_json()
+    customer_id = customer.get_json()['id']
+    key = str(uuid4())
+    body = {'customer_id': customer_id, 'service_type': 'تست بازپخش', 'invoice_amount': 1000,
+            'received_amount': 1000, 'payment_method': 'cash', 'status': 'completed'}
+    if path.endswith('/register'):
+        body['parsed'] = {'last_name': 'آزمایش بازپخش', 'phones': [], 'amount': 1000}
+    else:
+        body['client_id'] = key
+    create_headers = {**headers, 'Idempotency-Key': key}
+    created = client.post(path, headers=create_headers, json=body)
+    assert created.status_code == 201, created.get_json()
+    visit_id = created.get_json()['visit_id' if path.endswith('/register') else 'id']
+    report = client.get('/api/finance/dashboard').get_json()
+    record = next(row for row in report['records'] if row['id'] == visit_id)
+    assert record['method'] == 'cash'
+    edited = client.patch('/api/finance/payments/' + visit_id, headers=headers,
+                          json={'payment_method': 'transfer', 'revision': record['revision']})
+    assert edited.status_code == 200, edited.get_json()
+    replay = client.post(path, headers=create_headers, json=body)
+    assert replay.status_code == 201, replay.get_json()
+    assert replay.headers['Idempotency-Replayed'] == 'true'
+    report = client.get('/api/finance/dashboard').get_json()
+    records = [row for row in report['records'] if row['id'] == visit_id]
+    assert len(records) == 1 and records[0]['method'] == 'transfer'

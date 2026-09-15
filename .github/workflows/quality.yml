@@ -57,7 +57,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           for file in *.js; do node --check "$file"; done
-          node --test tests/test_aqua_voice_controller.mjs tests/test_preview_interactions.mjs
+          node --test tests/*.mjs
           sha256sum -c vendor/SHA256SUMS
       - name: Verify critical production files
         run: |
@@ -66,3 +66,4 @@ jobs:
           grep -q "aquagold_session" app_v3.py
           grep -q "Content-Security-Policy" app_v3.py
           grep -q "customer_phones_phone_unique_idx" neon/migrations/005_security_integrity.sql
+

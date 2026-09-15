@@ -29,3 +29,18 @@ def format_geocode_results(raw, validator, limit=3):
                      "latitude": float(item["lat"]), "longitude": float(item["lon"]),
                      "type": item.get("type")})
     return rows
+
+
+
+NON_ADDRESS_TOPIC = re.compile(r"هوا|اخبار|خبر|قیمت|طلا|دلار|مشتری|فروش|هزینه|درآمد|چطوره|چگونه|چرا|چقدر|چه خبر")
+ADDRESS_CUE = re.compile(r"خیابان|خیابون|کوچه|بلوار|میدان|بزرگراه|اتوبان|محله|پلاک|بن بست|مرزداران|صادقیه|آریاشهر|پونک|ستارخان|یوسف آباد|سعادت آباد|تهرانسر|فردیس|کرج|تهران")
+
+
+def address_result_matches(query, item):
+    """Require address terms, including exact street numbers, in provider text."""
+    query = normalize_persian_address(query).replace("خیابون", "خیابان")
+    stop = {"خیابان", "کوچه", "بلوار", "محله", "پلاک", "آدرس", "میدان", "بزرگراه", "اتوبان", "توی", "در", "به", "از", "شهر", "استان"}
+    terms = [term for term in re.findall(r"[^\W_]+", query) if term not in stop]
+    found = normalize_persian_address(" ".join(str(item.get(key) or "") for key in ("title", "name", "formatted_address", "address", "region")))
+    numbers = re.findall(r"\d+", found)
+    return bool(terms) and all(term in numbers if term.isdigit() else term in found for term in terms)
