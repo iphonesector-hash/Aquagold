@@ -170,7 +170,7 @@ function app(){return{
     this.mainMarkers.forEach(m=>m.remove());this.mainMarkers=[];let pts=[];
     for(let c of this.customers.filter(x=>x.latitude&&x.longitude)){let label=c.map_label||c.name,html=`<div dir="rtl"><b>${this.escapeHtml(label)}</b><br>${this.escapeHtml((c.phones||[]).join(' • '))}<br>${this.escapeHtml(c.address||'')}</div>`,m=L.marker([c.latitude,c.longitude],{icon:this.mapIcon()}).bindPopup(html).addTo(this.mainMap);this.mainMarkers.push(m);pts.push([c.latitude,c.longitude])}
     if(pts.length)this.mainMap.fitBounds(L.latLngBounds(pts),{padding:[50,50],maxZoom:15});
-    setTimeout(()=>this.mainMap.invalidateSize(),80)
+    setTimeout(()=>{this.mainMap.invalidateSize();window.dispatchEvent(new CustomEvent('aquagold:map-ready'))},80)
   },
   mapIcon(){return L.divIcon({className:'aq-map-marker',html:'<span aria-hidden="true"></span>',iconSize:[28,36],iconAnchor:[14,34],popupAnchor:[0,-30]})},
   escapeHtml(s){return String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))},
@@ -184,7 +184,7 @@ function app(){return{
   showOnMap(c){this.page='map';setTimeout(()=>{this.renderMainMap();this.mainMap.setView([c.latitude,c.longitude],17)},120)},
   copyRoute(){let t=['🗺 مسیر بهینه پیشنهادی'];if(this.routeMeta.distance_m)t.push(`مسافت تقریبی: ${Math.round(this.routeMeta.distance_m/1000*10)/10} کیلومتر`);if(this.routeMeta.duration_s)t.push(`زمان تقریبی: ${Math.round(this.routeMeta.duration_s/60)} دقیقه`);this.routePlan.forEach((r,i)=>t.push(`${i+1}) ${r.map_label||r.name} — ${r.phone||''} — ${r.address||''}`));this.copyText(t.join('\n'))},
 
-  async createExpense(){try{let f={...this.expenseForm,amount:this.num(this.expenseForm.amount)},d=await this.api('/expenses',{method:'POST',body:JSON.stringify(f)});this.expenseForm={category:'goods',title:'',amount:'',expense_date:'',notes:''};if(d?.queued){this.expenses.unshift({...f,id:d.id,expense_date:f.expense_date||new Date().toISOString(),offline_pending:true});alert('هزینه در صف همگام‌سازی ذخیره شد');return}await this.refreshAll();alert('هزینه ثبت شد')}catch(e){alert(e.message)}},
+  async createExpense(){try{let f={...this.expenseForm,amount:this.num(String(this.expenseForm.amount||'').replace(/[۰-۹]/g,d=>'۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g,d=>'٠١٢٣٤٥٦٧٨٩'.indexOf(d)))},d=await this.api('/expenses',{method:'POST',body:JSON.stringify(f)});this.expenseForm={category:'goods',title:'',amount:'',expense_date:'',notes:''};if(d?.queued){this.expenses.unshift({...f,id:d.id,expense_date:f.expense_date||new Date().toISOString(),offline_pending:true});alert('هزینه در صف همگام‌سازی ذخیره شد');return}await this.refreshAll();alert('هزینه ثبت شد')}catch(e){alert(e.message)}},
   async removeExpense(e){if(!confirm('این هزینه حذف شود؟'))return;await this.api('/expenses/'+e.id,{method:'DELETE'});await this.refreshAll()},
   sanitizeSettlementAmount(v){let s=String(v??'');let user=String(this.user?.username||this.loginForm?.username||'').trim();if(user&&s.trim().toLowerCase()===user.toLowerCase())return '';if(/^[A-Za-z._@-]+$/.test(s.trim()))return '';return s.replace(/[^\d۰-۹٠-٩]/g,'')},
   guardSettlementAmount(){let el=this.$refs&&this.$refs.settleAmount;let raw=el?el.value:this.settlementForm.amount;let clean=this.sanitizeSettlementAmount(raw);if(this.settlementForm.amount!==clean)this.settlementForm.amount=clean;if(el&&el.value!==clean)el.value=clean},

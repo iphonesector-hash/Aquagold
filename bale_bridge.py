@@ -407,3 +407,44 @@ def bale_job_cancel(job_id):
     settings = _load_settings()
     _send_chat(settings, job["chat_id"], f"❌ کار کنسل شد. علت: {reason}", job["message_id"])
     return jsonify({"ok": True})
+
+
+# One snapshot powers both the selected list and its counters. Pending work is
+# retained regardless of age; terminal states use their actual Tehran event day.
+_TODAY_JOBS_WHERE = """(
+    status in ('new','review')
+    or (status='completed' and (completed_at at time zone 'Asia/Tehran')::date=%s)
+    or (status='cancelled' and (cancelled_at at time zone 'Asia/Tehran')::date=%s)
+)"""
+
+
+@app_v3.app.get('/api/bale/jobs/today')
+@app_v3.roles_required('technician')
+def bale_jobs_today():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    import aqua_preview_bale_sync
+
+    status = (request.args.get('status') or 'new').strip()
+    if status not in {'new', 'review', 'completed', 'cancelled', 'all'}:
+        raise ValidationError('وضعیت کار معتبر نیست')
+    aqua_preview_bale_sync._sync_live_bale_inbox()
+    today = datetime.now(ZoneInfo('Asia/Tehran')).date()
+    with app_v3.get_db() as db, db.cursor() as cur:
+        cur.execute('set transaction isolation level repeatable read read only')
+        cur.execute('select status,count(*)::int count from bale_jobs where ' + _TODAY_JOBS_WHERE + ' group by status', (today, today))
+        counts = {row['status']: row['count'] for row in cur.fetchall()}
+        clause = ''
+        params = [today, today]
+        if status == 'new':
+            clause = " and status in ('new','review')"
+        elif status != 'all':
+            clause = ' and status=%s'
+            params.append(status)
+        cur.execute('select * from bale_jobs where ' + _TODAY_JOBS_WHERE + clause + ' order by coalesce(completed_at,cancelled_at,received_at) desc limit 300', tuple(params))
+        items = [app_v3.row_json(row) for row in cur.fetchall()]
+    return jsonify({'date': today.isoformat(), 'items': items, 'counts': {
+        'new': counts.get('new', 0) + counts.get('review', 0),
+        'review': counts.get('review', 0),
+        'completed': counts.get('completed', 0), 'cancelled': counts.get('cancelled', 0),
+    }})

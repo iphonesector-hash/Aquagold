@@ -288,7 +288,7 @@ def finalize_aqua_round8_field_runtime(response):
         if FINAL_JS + "?" not in body:
             body = body.replace(
                 "</body>",
-                f'<script src="{FINAL_JS}?v=20260906-6"></script></body>',
+                f'<script src="{FINAL_JS}?v=20260913-1"></script></body>',
                 1,
             )
         if 'id="aqua-daily-edit-native-v1"' not in body:

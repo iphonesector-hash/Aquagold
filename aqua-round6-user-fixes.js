@@ -358,8 +358,21 @@
     patchDailyEditButton();
     patchServiceEditModal();
   };
-  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',keepPatched,{once:true});
-  else keepPatched();
-  const observer=new MutationObserver(()=>keepPatched());
-  observer.observe(document.documentElement,{childList:true,subtree:true});
+  const observeScoped=()=>{
+    const roots=[];
+    const smart=[...document.querySelectorAll('section')].find(el=>(el.getAttribute('x-show')||'').includes("page==='smart'"));
+    const daily=[...document.querySelectorAll('section')].find(el=>(el.getAttribute('x-show')||'').includes("page==='daily'"));
+    if(smart)roots.push(smart);
+    if(daily)roots.push(daily);
+    document.querySelectorAll('[x-show="serviceEditOpen"]').forEach(el=>roots.push(el));
+    roots.forEach(root=>{
+      if(!root||root.__aquaRound6Obs)return;
+      root.__aquaRound6Obs=true;
+      const observer=new MutationObserver(()=>keepPatched());
+      observer.observe(root,{childList:true,subtree:true});
+    });
+  };
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{keepPatched();observeScoped()},{once:true});
+  else {keepPatched();observeScoped()}
+  document.addEventListener('alpine:initialized',()=>{keepPatched();observeScoped()},{once:true});
 })();

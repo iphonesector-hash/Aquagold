@@ -335,6 +335,12 @@
   };
   keepNewLoader();
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',keepNewLoader,{once:true});
-  const loaderObserver=new MutationObserver(keepNewLoader);
-  loaderObserver.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','href']});
+  const boot=document.getElementById('aqua-boot-20260906');
+  if(boot){
+    const loaderObserver=new MutationObserver(()=>{
+      keepNewLoader();
+      if(!document.getElementById('aqua-boot-20260906'))loaderObserver.disconnect();
+    });
+    loaderObserver.observe(boot,{childList:true,subtree:true,attributes:true,attributeFilter:['src']});
+  }
 })();

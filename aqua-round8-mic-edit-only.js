@@ -90,6 +90,30 @@
   if(typeof previous!=='function')return;
   window.app=function(){
     const state=previous();
+    state.baleTodaySeq=0;
+    state.baleTodayRequest=null;
+    state.loadBaleJobs=function(tab=null){
+      const wanted=typeof tab==='string'?tab:(this.baleTab||'new');
+      if(!['new','review','completed','cancelled','all'].includes(wanted))return Promise.resolve();
+      this.baleTab=wanted;
+      if(this.baleTodayRequest?.tab===wanted)return this.baleTodayRequest.promise;
+      const sequence=++this.baleTodaySeq;
+      const promise=(async()=>{
+        try{
+          const data=await this.api('/bale/jobs/today?status='+encodeURIComponent(wanted)+'&_='+Date.now());
+          if(sequence!==this.baleTodaySeq)return;
+          this.baleCounts=data.counts;
+          this.baleJobs=(wanted==='new'&&this.sortBaleJobsByAppointment)?this.sortBaleJobsByAppointment(data.items):data.items;
+        }catch(error){if(sequence===this.baleTodaySeq)this.toast?.(error.message||'دریافت کارها انجام نشد','error')}
+        finally{if(sequence===this.baleTodaySeq)this.baleTodayRequest=null}
+      })();
+      this.baleTodayRequest={tab:wanted,promise};return promise;
+    };
+    state.loadBaleCounts=function(){return this.loadBaleJobs(this.baleTab||'new')};
+    const refreshBale=()=>{if(state.token&&!document.hidden)void state.loadBaleCounts()};
+    document.addEventListener('visibilitychange',refreshBale);
+    window.addEventListener('focus',refreshBale);
+    setInterval(refreshBale,60000);
     state.aquaMicRun=Number(state.aquaMicRun||0);
     state.aquaMicStopRun=0;
     state.aquaMicFinalizing=false;
@@ -120,12 +144,18 @@
       if(!window.isSecureContext){this.toast?.('میکروفن فقط روی HTTPS کار می‌کند','error');return}
       if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder){this.toast?.('ضبط صدا روی این مرورگر پشتیبانی نمی‌شود','error');return}
 
-      await stopPlaybackForMic(this);
       this.setAquaVoicePhase?.('starting');
       this.aquaRecording=false;
-      let stream=null;
+      let stream=null,permissionTimer=null,permissionExpired=false;
       try{
-        stream=await navigator.mediaDevices.getUserMedia({audio:true});
+        // Start capture within the tap; audio suspension must not delay permission.
+        const capture=navigator.mediaDevices.getUserMedia({audio:true});
+        void stopPlaybackForMic(this);
+        capture.then(late=>{if(permissionExpired)late.getTracks().forEach(track=>track.stop())},()=>{});
+        stream=await Promise.race([capture,new Promise((_,reject)=>{
+          permissionTimer=setTimeout(()=>{permissionExpired=true;reject(new Error('درخواست میکروفن پاسخ نگرفت؛ دوباره دکمه را بزن و اجازه مرورگر را تأیید کن'))},15000);
+        })]);
+        clearTimeout(permissionTimer);
         const track=stream?.getAudioTracks?.()[0];
         if(!track||track.readyState!=='live')throw new Error('میکروفن فعال نشد');
 
@@ -176,8 +206,18 @@
             const csrf=this.cookie?.('aquagold_csrf');
             if(csrf)headers['X-CSRF-Token']=csrf;
 
-            const response=await fetch('/api/aqua-ai/transcribe',{method:'POST',body:form,headers,credentials:'same-origin',cache:'no-store'});
-            let data={};try{data=await response.json()}catch{}
+            // Release hardware as soon as recording ends, before network work.
+            stream?.getTracks?.().forEach(track=>track.stop());
+            const controller=new AbortController();
+            const uploadTimer=setTimeout(()=>controller.abort(),50000);
+            let response,data={};
+            try{
+              response=await fetch('/api/aqua-ai/transcribe',{method:'POST',body:form,headers,credentials:'same-origin',cache:'no-store',signal:controller.signal});
+              data=await response.json();
+            }catch(error){
+              if(error.name==='AbortError')throw new Error('مهلت تبدیل ویس تمام شد؛ دوباره امتحان کن');
+              throw error;
+            }finally{clearTimeout(uploadTimer)}
             if(!response.ok)throw new Error(data.error||'تبدیل ویس به متن انجام نشد');
             const spoken=clean(data.text);
             if(!spoken)throw new Error('حرفی از ویس تشخیص داده نشد');
@@ -230,6 +270,7 @@
           this.aquaRecording=true;this.setAquaVoicePhase?.('recording');
         },600);
       }catch(error){
+        clearTimeout(permissionTimer);permissionExpired=true;
         try{stream?.getTracks?.().forEach(track=>track.stop())}catch{}
         this.aquaRecorder=null;this.aquaStream=null;this.aquaRecording=false;this.setAquaVoicePhase?.('idle');
         const name=String(error?.name||'');

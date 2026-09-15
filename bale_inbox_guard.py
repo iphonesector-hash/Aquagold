@@ -216,7 +216,20 @@ BALE_DISCARD_UI_JS = r"""
    head.appendChild(button)
   })
  };
- const start=()=>{scan();const observer=new MutationObserver(scan);observer.observe(document.body,{childList:true,subtree:true});setTimeout(scan,250);setTimeout(scan,900)};
+ const start=()=>{
+  scan();
+  const attach=()=>{
+   const root=[...document.querySelectorAll('section')].find(el=>(el.getAttribute('x-show')||'').includes('bale-jobs'));
+   if(!root||root.dataset.baleDiscardObs)return;
+   root.dataset.baleDiscardObs='1';
+   const observer=new MutationObserver(scan);
+   observer.observe(root,{childList:true,subtree:true});
+  };
+  attach();
+  document.addEventListener('alpine:initialized',()=>{attach();scan()},{once:true});
+  setTimeout(()=>{attach();scan()},250);
+  setTimeout(()=>{attach();scan()},900);
+ };
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
 })();
 """

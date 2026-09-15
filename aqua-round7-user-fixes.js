@@ -42,6 +42,17 @@
   // immediately before Alpine compiles it, then keep a native fallback for iOS.
   document.addEventListener('alpine:init',patchDailyTemplate,{once:true});
   document.addEventListener('alpine:initialized',()=>{patchRenderedRows();setTimeout(patchRenderedRows,120);setTimeout(patchRenderedRows,700)},{once:true});
-  const startObserver=()=>{const root=document.body;if(!root)return;const observer=new MutationObserver(()=>patchRenderedRows());observer.observe(root,{childList:true,subtree:true});setTimeout(patchRenderedRows,250)};
+  const startObserver=()=>{
+    const attach=()=>{
+      const root=dailySection();
+      if(!root||root.__aquaRound7Obs)return;
+      root.__aquaRound7Obs=true;
+      const observer=new MutationObserver(()=>patchRenderedRows());
+      observer.observe(root,{childList:true,subtree:true});
+    };
+    attach();
+    document.addEventListener('alpine:initialized',()=>{attach();patchRenderedRows()},{once:true});
+    setTimeout(()=>{attach();patchRenderedRows()},250);
+  };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startObserver,{once:true});else startObserver();
 })();
